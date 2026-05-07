@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
     if (!sttRes.ok) {
       const t = await sttRes.text();
       console.error("ElevenLabs STT error:", sttRes.status, t);
-      throw new Error(`Transcrição falhou (${sttRes.status})`);
+      throw new Error(`Transcrição falhou (${sttRes.status}): ${t.slice(0, 200)}`);
     }
     const sttData = await sttRes.json();
     const transcript: string = sttData.text || "";

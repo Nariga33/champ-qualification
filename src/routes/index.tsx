@@ -30,13 +30,16 @@ function Index() {
     setLoading(true);
     setSummary("");
     try {
-      const fd = new FormData();
-      const ext = blob.type.includes("mp3") ? "mp3" : blob.type.includes("wav") ? "wav" : "webm";
-      fd.append("file", blob, `audio.${ext}`);
+      const ext = blob.type.includes("mp3") ? "mp3" : blob.type.includes("wav") ? "wav" : blob.type.includes("mpeg") ? "mp3" : "webm";
+      const filename = (blob instanceof File ? blob.name : `audio.${ext}`);
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-call`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-        body: fd,
+        headers: {
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          "Content-Type": blob.type || "audio/webm",
+          "x-filename": filename,
+        },
+        body: blob,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Falha ao processar áudio");

@@ -30,23 +30,13 @@ function Index() {
     setLoading(true);
     setSummary("");
     try {
-      const buf = await blob.arrayBuffer();
-      // chunked base64 encode
-      const bytes = new Uint8Array(buf);
-      let bin = "";
-      const chunk = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-      }
-      const base64 = btoa(bin);
-
+      const fd = new FormData();
+      const ext = blob.type.includes("mp3") ? "mp3" : blob.type.includes("wav") ? "wav" : "webm";
+      fd.append("file", blob, `audio.${ext}`);
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-call`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({ audio: base64, mimeType: blob.type }),
+        headers: { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+        body: fd,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Falha ao processar áudio");

@@ -52,14 +52,16 @@ Deno.serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
 
-    // 1) Receber arquivo via FormData (streaming, sem base64 na memória)
-    const form = await req.formData();
-    const file = form.get("file");
-    if (!(file instanceof File)) throw new Error("Arquivo de áudio é obrigatório");
+    // 1) Receber áudio como corpo binário cru (evita issues de multipart no gateway)
+    const contentType = req.headers.get("content-type") || "audio/webm";
+    const filename = req.headers.get("x-filename") || "audio.webm";
+    const audioBuffer = await req.arrayBuffer();
+    if (!audioBuffer.byteLength) throw new Error("Arquivo de áudio é obrigatório");
+    const audioBlob = new Blob([audioBuffer], { type: contentType });
 
     // 2) Transcrever com ElevenLabs Scribe
     const sttForm = new FormData();
-    sttForm.append("file", file);
+    sttForm.append("file", audioBlob, filename);
     sttForm.append("model_id", "scribe_v2");
     sttForm.append("language_code", "por");
     sttForm.append("diarize", "true");

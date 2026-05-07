@@ -1,5 +1,3 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -49,13 +47,39 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { audio, mimeType } = await req.json();
-    if (!audio) throw new Error("Audio é obrigatório");
-
+    const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+    if (!ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY não configurada");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // 1) Receber arquivo via FormData (streaming, sem base64 na memória)
+    const form = await req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) throw new Error("Arquivo de áudio é obrigatório");
+
+    // 2) Transcrever com ElevenLabs Scribe
+    const sttForm = new FormData();
+    sttForm.append("file", file);
+    sttForm.append("model_id", "scribe_v2");
+    sttForm.append("language_code", "por");
+    sttForm.append("diarize", "true");
+
+    const sttRes = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+      method: "POST",
+      headers: { "xi-api-key": ELEVENLABS_API_KEY },
+      body: sttForm,
+    });
+    if (!sttRes.ok) {
+      const t = await sttRes.text();
+      console.error("ElevenLabs STT error:", sttRes.status, t);
+      throw new Error(`Transcrição falhou (${sttRes.status})`);
+    }
+    const sttData = await sttRes.json();
+    const transcript: string = sttData.text || "";
+    if (!transcript.trim()) throw new Error("Não foi possível transcrever o áudio");
+
+    // 3) Gerar resumo CRM com Lovable AI
+    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -65,46 +89,31 @@ Deno.serve(async (req) => {
         model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Transcreva esta cold call e gere o resumo CRM no formato definido.",
-              },
-              {
-                type: "input_audio",
-                input_audio: {
-                  data: audio,
-                  format: (mimeType || "audio/webm").includes("mp3") ? "mp3" : "webm",
-                },
-              },
-            ],
-          },
+          { role: "user", content: `Transcrição da cold call:\n\n${transcript}\n\nGere o resumo CRM no formato definido.` },
         ],
       }),
     });
 
-    if (!response.ok) {
-      const t = await response.text();
-      console.error("Gateway error:", response.status, t);
-      if (response.status === 429) {
+    if (!aiRes.ok) {
+      const t = await aiRes.text();
+      console.error("Gateway error:", aiRes.status, t);
+      if (aiRes.status === 429) {
         return new Response(JSON.stringify({ error: "Limite de requisições atingido. Tente novamente em instantes." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402) {
+      if (aiRes.status === 402) {
         return new Response(JSON.stringify({ error: "Créditos de IA esgotados. Adicione créditos no workspace." }), {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      throw new Error(`AI gateway erro ${response.status}`);
+      throw new Error(`AI gateway erro ${aiRes.status}`);
     }
 
-    const data = await response.json();
+    const data = await aiRes.json();
     const summary = data.choices?.[0]?.message?.content ?? "";
 
-    return new Response(JSON.stringify({ summary }), {
+    return new Response(JSON.stringify({ summary, transcript }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

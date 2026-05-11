@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
     if (!transcript.trim()) throw new Error("Não foi possível transcrever o áudio");
     console.log(`Transcrição via ${provider}`);
 
-    // 3) Gerar resumo CRM com Lovable AI
+    // 3) Gerar resumo CRM + qualificação (score 0-100 + classificação) via tool calling
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -145,8 +145,38 @@ Deno.serve(async (req) => {
         model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Transcrição da cold call:\n\n${transcript}\n\nGere o resumo CRM no formato definido.` },
+          {
+            role: "user",
+            content:
+              `Transcrição da cold call:\n\n${transcript}\n\n` +
+              `Gere:\n` +
+              `1) summary: o resumo CRM no formato definido (Markdown com emojis).\n` +
+              `2) score: nota de 0 a 100 da qualidade do lead (BANT/SPIN — Budget, Authority, Need, Timing, fit, urgência, dor clara).\n` +
+              `3) classification: "Quente" (>=70), "Morno" (40-69) ou "Frio" (<40).\n` +
+              `4) score_reasoning: 1-2 frases curtas justificando a nota.`,
+          },
         ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "qualify_cold_call",
+              description: "Retorna o resumo CRM e a qualificação do lead.",
+              parameters: {
+                type: "object",
+                properties: {
+                  summary: { type: "string", description: "Resumo CRM em Markdown no template definido." },
+                  score: { type: "integer", minimum: 0, maximum: 100 },
+                  classification: { type: "string", enum: ["Quente", "Morno", "Frio"] },
+                  score_reasoning: { type: "string" },
+                },
+                required: ["summary", "score", "classification", "score_reasoning"],
+                additionalProperties: false,
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "qualify_cold_call" } },
       }),
     });
 
@@ -167,9 +197,23 @@ Deno.serve(async (req) => {
     }
 
     const data = await aiRes.json();
-    const summary = data.choices?.[0]?.message?.content ?? "";
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    let summary = "";
+    let score = 0;
+    let classification: "Quente" | "Morno" | "Frio" = "Frio";
+    let score_reasoning = "";
+    try {
+      const args = JSON.parse(toolCall?.function?.arguments ?? "{}");
+      summary = args.summary ?? "";
+      score = Math.max(0, Math.min(100, Number(args.score) || 0));
+      classification = args.classification ?? (score >= 70 ? "Quente" : score >= 40 ? "Morno" : "Frio");
+      score_reasoning = args.score_reasoning ?? "";
+    } catch (err) {
+      console.error("Failed to parse tool call args:", err);
+      summary = data.choices?.[0]?.message?.content ?? "";
+    }
 
-    return new Response(JSON.stringify({ summary, transcript, provider }), {
+    return new Response(JSON.stringify({ summary, score, classification, score_reasoning, transcript, provider }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

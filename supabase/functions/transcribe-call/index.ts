@@ -48,9 +48,13 @@ Deno.serve(async (req) => {
 
   try {
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
-    if (!ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY não configurada");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+
+    if (!ELEVENLABS_API_KEY && !OPENAI_API_KEY) {
+      throw new Error("Nenhum provedor de transcrição configurado (ELEVENLABS_API_KEY ou OPENAI_API_KEY)");
+    }
 
     // 1) Receber áudio como corpo binário cru (evita issues de multipart no gateway)
     const contentType = req.headers.get("content-type") || "audio/webm";
@@ -59,26 +63,76 @@ Deno.serve(async (req) => {
     if (!audioBuffer.byteLength) throw new Error("Arquivo de áudio é obrigatório");
     const audioBlob = new Blob([audioBuffer], { type: contentType });
 
-    // 2) Transcrever com ElevenLabs Scribe
-    const sttForm = new FormData();
-    sttForm.append("file", audioBlob, filename);
-    sttForm.append("model_id", "scribe_v2");
-    sttForm.append("language_code", "por");
-    sttForm.append("diarize", "true");
+    // 2) Transcrever — tenta ElevenLabs Scribe e faz fallback para OpenAI Whisper
+    let transcript = "";
+    let provider = "";
+    let elevenError: { status: number; body: string } | null = null;
 
-    const sttRes = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
-      method: "POST",
-      headers: { "xi-api-key": ELEVENLABS_API_KEY },
-      body: sttForm,
-    });
-    if (!sttRes.ok) {
-      const t = await sttRes.text();
-      console.error("ElevenLabs STT error:", sttRes.status, t);
-      throw new Error(`Transcrição falhou (${sttRes.status}): ${t.slice(0, 200)}`);
+    if (ELEVENLABS_API_KEY) {
+      const sttForm = new FormData();
+      sttForm.append("file", audioBlob, filename);
+      sttForm.append("model_id", "scribe_v2");
+      sttForm.append("language_code", "por");
+      sttForm.append("diarize", "true");
+
+      const sttRes = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+        method: "POST",
+        headers: { "xi-api-key": ELEVENLABS_API_KEY },
+        body: sttForm,
+      });
+
+      if (sttRes.ok) {
+        const sttData = await sttRes.json();
+        transcript = sttData.text || "";
+        provider = "elevenlabs";
+      } else {
+        const t = await sttRes.text();
+        console.error("ElevenLabs STT error:", sttRes.status, t);
+        elevenError = { status: sttRes.status, body: t };
+
+        const isPermissionError =
+          sttRes.status === 401 ||
+          sttRes.status === 403 ||
+          /missing_permissions|permission/i.test(t);
+
+        if (!isPermissionError || !OPENAI_API_KEY) {
+          if (isPermissionError && !OPENAI_API_KEY) {
+            throw new Error(
+              "A chave do ElevenLabs não tem permissão de Speech to Text e não há fallback configurado. " +
+              "Habilite 'Speech to Text' em https://elevenlabs.io/app/settings/api-keys e reconecte, " +
+              "ou configure OPENAI_API_KEY para usar o Whisper como fallback."
+            );
+          }
+          throw new Error(`Transcrição falhou (${sttRes.status}): ${t.slice(0, 200)}`);
+        }
+        console.log("ElevenLabs sem permissão — usando fallback Whisper");
+      }
     }
-    const sttData = await sttRes.json();
-    const transcript: string = sttData.text || "";
+
+    if (!transcript && OPENAI_API_KEY) {
+      const whisperForm = new FormData();
+      whisperForm.append("file", audioBlob, filename);
+      whisperForm.append("model", "whisper-1");
+      whisperForm.append("language", "pt");
+
+      const wRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+        body: whisperForm,
+      });
+      if (!wRes.ok) {
+        const t = await wRes.text();
+        console.error("OpenAI Whisper error:", wRes.status, t);
+        const elevenMsg = elevenError ? ` (ElevenLabs ${elevenError.status})` : "";
+        throw new Error(`Fallback Whisper falhou (${wRes.status})${elevenMsg}: ${t.slice(0, 200)}`);
+      }
+      const wData = await wRes.json();
+      transcript = wData.text || "";
+      provider = "openai-whisper";
+    }
+
     if (!transcript.trim()) throw new Error("Não foi possível transcrever o áudio");
+    console.log(`Transcrição via ${provider}`);
 
     // 3) Gerar resumo CRM com Lovable AI
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -115,7 +169,7 @@ Deno.serve(async (req) => {
     const data = await aiRes.json();
     const summary = data.choices?.[0]?.message?.content ?? "";
 
-    return new Response(JSON.stringify({ summary, transcript }), {
+    return new Response(JSON.stringify({ summary, transcript, provider }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

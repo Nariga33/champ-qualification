@@ -17,6 +17,15 @@ export const Route = createFileRoute("/")({
   }),
 });
 
+const HISTORY_KEY = "cold-call-history-v1";
+type HistoryItem = {
+  id: string;
+  label: string;
+  createdAt: number;
+  summary: string;
+  transcript: string;
+};
+
 function Index() {
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);

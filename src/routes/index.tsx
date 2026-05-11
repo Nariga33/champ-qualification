@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X } from "lucide-react";
+import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,18 +18,31 @@ export const Route = createFileRoute("/")({
 });
 
 const HISTORY_KEY = "cold-call-history-v1";
+type Classification = "Quente" | "Morno" | "Frio";
 type HistoryItem = {
   id: string;
   label: string;
   createdAt: number;
   summary: string;
   transcript: string;
+  score?: number;
+  classification?: Classification;
+  scoreReasoning?: string;
+};
+
+const classMeta: Record<Classification, { color: string; bg: string; border: string; icon: typeof Flame }> = {
+  Quente: { color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", icon: Flame },
+  Morno: { color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/30", icon: Thermometer },
+  Frio: { color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30", icon: Snowflake },
 };
 
 function Index() {
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState("");
+  const [score, setScore] = useState<number | null>(null);
+  const [classification, setClassification] = useState<Classification | null>(null);
+  const [scoreReasoning, setScoreReasoning] = useState<string>("");
   const [audioInfo, setAudioInfo] = useState<string>("");
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -52,6 +65,9 @@ function Index() {
     setAudioInfo(`${label} • ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
     setLoading(true);
     setSummary("");
+    setScore(null);
+    setClassification(null);
+    setScoreReasoning("");
     try {
       const ext = blob.type.includes("mp3") ? "mp3" : blob.type.includes("wav") ? "wav" : blob.type.includes("mpeg") ? "mp3" : "webm";
       const filename = (blob instanceof File ? blob.name : `audio.${ext}`);
@@ -67,12 +83,18 @@ function Index() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Falha ao processar áudio");
       setSummary(data.summary);
+      setScore(typeof data.score === "number" ? data.score : null);
+      setClassification((data.classification as Classification) ?? null);
+      setScoreReasoning(data.score_reasoning ?? "");
       const item: HistoryItem = {
         id: crypto.randomUUID(),
         label,
         createdAt: Date.now(),
         summary: data.summary,
         transcript: data.transcript ?? "",
+        score: typeof data.score === "number" ? data.score : undefined,
+        classification: (data.classification as Classification) ?? undefined,
+        scoreReasoning: data.score_reasoning ?? "",
       };
       persist([item, ...history].slice(0, 50));
       setSelectedId(item.id);
@@ -121,6 +143,9 @@ function Index() {
 
   const loadItem = (item: HistoryItem) => {
     setSummary(item.summary);
+    setScore(item.score ?? null);
+    setClassification(item.classification ?? null);
+    setScoreReasoning(item.scoreReasoning ?? "");
     setAudioInfo(`${item.label} • ${new Date(item.createdAt).toLocaleString("pt-BR")}`);
     setSelectedId(item.id);
   };
@@ -131,6 +156,9 @@ function Index() {
     if (selectedId === id) {
       setSelectedId(null);
       setSummary("");
+      setScore(null);
+      setClassification(null);
+      setScoreReasoning("");
       setAudioInfo("");
     }
   };
@@ -139,6 +167,9 @@ function Index() {
     persist([]);
     setSelectedId(null);
     setSummary("");
+    setScore(null);
+    setClassification(null);
+    setScoreReasoning("");
     setAudioInfo("");
     toast.success("Histórico limpo");
   };
@@ -199,6 +230,41 @@ function Index() {
         )}
 
         {summary && (
+          classification && score !== null && (() => {
+            const meta = classMeta[classification];
+            const Icon = meta.icon;
+            return (
+              <Card className={`mt-8 border ${meta.border} ${meta.bg} p-6`}>
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`flex h-14 w-14 items-center justify-center rounded-full ${meta.bg} ${meta.color}`}>
+                      <Icon className="h-7 w-7" />
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wider text-muted-foreground">Classificação</div>
+                      <div className={`text-2xl font-bold ${meta.color}`}>{classification}</div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-start md:items-end">
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Score</div>
+                    <div className={`text-4xl font-bold ${meta.color}`}>{score}<span className="text-base text-muted-foreground">/100</span></div>
+                  </div>
+                </div>
+                <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-background">
+                  <div
+                    className={`h-full rounded-full transition-all ${classification === "Quente" ? "bg-orange-500" : classification === "Morno" ? "bg-yellow-500" : "bg-blue-500"}`}
+                    style={{ width: `${score}%` }}
+                  />
+                </div>
+                {scoreReasoning && (
+                  <p className="mt-3 text-sm text-muted-foreground">{scoreReasoning}</p>
+                )}
+              </Card>
+            );
+          })()
+        )}
+
+        {summary && (
           <Card className="mt-8 border-border bg-card p-8">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold">Resumo CRM</h2>
@@ -234,8 +300,16 @@ function Index() {
                     onClick={() => loadItem(item)}
                     className="flex-1 truncate text-left text-sm hover:text-primary"
                   >
-                    <span className="font-medium">{item.label}</span>
-                    <span className="ml-2 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      {item.classification && (
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${classMeta[item.classification].border} ${classMeta[item.classification].bg} ${classMeta[item.classification].color}`}>
+                          {item.classification}
+                          {typeof item.score === "number" && <span>· {item.score}</span>}
+                        </span>
+                      )}
+                      <span className="font-medium">{item.label}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
                       {new Date(item.createdAt).toLocaleString("pt-BR")}
                     </span>
                   </button>

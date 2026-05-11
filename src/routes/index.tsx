@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useRef } from "react";
-import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,13 +17,36 @@ export const Route = createFileRoute("/")({
   }),
 });
 
+const HISTORY_KEY = "cold-call-history-v1";
+type HistoryItem = {
+  id: string;
+  label: string;
+  createdAt: number;
+  summary: string;
+  transcript: string;
+};
+
 function Index() {
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState("");
   const [audioInfo, setAudioInfo] = useState<string>("");
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (raw) setHistory(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const persist = (items: HistoryItem[]) => {
+    setHistory(items);
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(items)); } catch {}
+  };
 
   const processBlob = async (blob: Blob, label: string) => {
     setAudioInfo(`${label} • ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
@@ -44,6 +67,15 @@ function Index() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Falha ao processar áudio");
       setSummary(data.summary);
+      const item: HistoryItem = {
+        id: crypto.randomUUID(),
+        label,
+        createdAt: Date.now(),
+        summary: data.summary,
+        transcript: data.transcript ?? "",
+      };
+      persist([item, ...history].slice(0, 50));
+      setSelectedId(item.id);
       toast.success("Resumo gerado!");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao processar");
@@ -85,6 +117,30 @@ function Index() {
   const copy = async () => {
     await navigator.clipboard.writeText(summary);
     toast.success("Resumo copiado para a área de transferência");
+  };
+
+  const loadItem = (item: HistoryItem) => {
+    setSummary(item.summary);
+    setAudioInfo(`${item.label} • ${new Date(item.createdAt).toLocaleString("pt-BR")}`);
+    setSelectedId(item.id);
+  };
+
+  const deleteItem = (id: string) => {
+    const next = history.filter((h) => h.id !== id);
+    persist(next);
+    if (selectedId === id) {
+      setSelectedId(null);
+      setSummary("");
+      setAudioInfo("");
+    }
+  };
+
+  const clearHistory = () => {
+    persist([]);
+    setSelectedId(null);
+    setSummary("");
+    setAudioInfo("");
+    toast.success("Histórico limpo");
   };
 
   return (
@@ -155,6 +211,45 @@ function Index() {
               onChange={(e) => setSummary(e.target.value)}
               className="min-h-[480px] resize-y bg-background font-mono text-sm leading-relaxed"
             />
+          </Card>
+        )}
+
+        {history.length > 0 && (
+          <Card className="mt-8 border-border bg-card p-8">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-xl font-semibold">
+                <History className="h-5 w-5 text-primary" /> Histórico ({history.length})
+              </h2>
+              <Button onClick={clearHistory} variant="ghost" size="sm">
+                <Trash2 className="mr-2 h-4 w-4" /> Limpar tudo
+              </Button>
+            </div>
+            <ul className="divide-y divide-border">
+              {history.map((item) => (
+                <li
+                  key={item.id}
+                  className={`flex items-center justify-between gap-3 py-3 ${selectedId === item.id ? "text-primary" : ""}`}
+                >
+                  <button
+                    onClick={() => loadItem(item)}
+                    className="flex-1 truncate text-left text-sm hover:text-primary"
+                  >
+                    <span className="font-medium">{item.label}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {new Date(item.createdAt).toLocaleString("pt-BR")}
+                    </span>
+                  </button>
+                  <Button
+                    onClick={() => deleteItem(item.id)}
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
           </Card>
         )}
       </div>

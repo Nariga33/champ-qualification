@@ -53,10 +53,6 @@ Deno.serve(async (req) => {
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 
-    if (!ELEVENLABS_API_KEY && !OPENAI_API_KEY) {
-      throw new Error("Nenhum provedor de transcrição configurado (ELEVENLABS_API_KEY ou OPENAI_API_KEY)");
-    }
-
     // 1) Receber áudio como corpo binário cru (evita issues de multipart no gateway)
     const contentType = req.headers.get("content-type") || "audio/webm";
     const filename = req.headers.get("x-filename") || "audio.webm";
@@ -64,7 +60,7 @@ Deno.serve(async (req) => {
     if (!audioBuffer.byteLength) throw new Error("Arquivo de áudio é obrigatório");
     const audioBlob = new Blob([audioBuffer], { type: contentType });
 
-    // 2) Transcrever — tenta ElevenLabs Scribe e faz fallback para OpenAI Whisper
+    // 2) Transcrever — tenta ElevenLabs Scribe; fallback OpenAI Whisper; fallback final Gemini (gratuito via Lovable AI)
     let transcript = "";
     let provider = "";
     let elevenError: { status: number; body: string } | null = null;
@@ -90,23 +86,7 @@ Deno.serve(async (req) => {
         const t = await sttRes.text();
         console.error("ElevenLabs STT error:", sttRes.status, t);
         elevenError = { status: sttRes.status, body: t };
-
-        const isPermissionError =
-          sttRes.status === 401 ||
-          sttRes.status === 403 ||
-          /missing_permissions|permission/i.test(t);
-
-        if (!isPermissionError || !OPENAI_API_KEY) {
-          if (isPermissionError && !OPENAI_API_KEY) {
-            throw new Error(
-              "A chave do ElevenLabs não tem permissão de Speech to Text e não há fallback configurado. " +
-              "Habilite 'Speech to Text' em https://elevenlabs.io/app/settings/api-keys e reconecte, " +
-              "ou configure OPENAI_API_KEY para usar o Whisper como fallback."
-            );
-          }
-          throw new Error(`Transcrição falhou (${sttRes.status}): ${t.slice(0, 200)}`);
-        }
-        console.log("ElevenLabs sem permissão — usando fallback Whisper");
+        console.log("ElevenLabs falhou — tentando fallback");
       }
     }
 
@@ -121,15 +101,58 @@ Deno.serve(async (req) => {
         headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
         body: whisperForm,
       });
-      if (!wRes.ok) {
+      if (wRes.ok) {
+        const wData = await wRes.json();
+        transcript = wData.text || "";
+        provider = "openai-whisper";
+      } else {
         const t = await wRes.text();
         console.error("OpenAI Whisper error:", wRes.status, t);
-        const elevenMsg = elevenError ? ` (ElevenLabs ${elevenError.status})` : "";
-        throw new Error(`Fallback Whisper falhou (${wRes.status})${elevenMsg}: ${t.slice(0, 200)}`);
       }
-      const wData = await wRes.json();
-      transcript = wData.text || "";
-      provider = "openai-whisper";
+    }
+
+    // Fallback final: Gemini via Lovable AI Gateway (gratuito, sem precisar de chave extra)
+    if (!transcript) {
+      const bytes = new Uint8Array(audioBuffer);
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+      const base64Audio = btoa(binary);
+      // Normaliza mime type para o que o Gemini aceita
+      let mime = contentType.split(";")[0].trim();
+      if (mime === "audio/webm") mime = "audio/webm";
+      else if (mime === "audio/mp3") mime = "audio/mpeg";
+
+      const gRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Transcreva integralmente este áudio em português, sem comentários, apenas o texto falado." },
+                { type: "input_audio", input_audio: { data: base64Audio, format: mime } },
+              ],
+            },
+          ],
+        }),
+      });
+      if (!gRes.ok) {
+        const t = await gRes.text();
+        console.error("Gemini STT error:", gRes.status, t);
+        const elevenMsg = elevenError ? ` ElevenLabs ${elevenError.status}.` : "";
+        throw new Error(`Falha na transcrição.${elevenMsg} Gemini ${gRes.status}: ${t.slice(0, 200)}`);
+      }
+      const gData = await gRes.json();
+      transcript = gData.choices?.[0]?.message?.content ?? "";
+      provider = "gemini";
     }
 
     if (!transcript.trim()) throw new Error("Não foi possível transcrever o áudio");

@@ -41,6 +41,9 @@ const classMeta: Record<Classification, { color: string; bg: string; border: str
 };
 
 function Index() {
+  const navigate = useNavigate();
+  const fetchProfile = useServerFn(getMyProfile);
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => fetchProfile() });
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState("");
@@ -182,6 +185,26 @@ function Index() {
     <div className="min-h-screen bg-background text-foreground">
       <Toaster theme="dark" />
       <div className="mx-auto max-w-5xl px-6 py-12">
+        <div className="mb-6 flex items-center justify-end gap-2 text-sm">
+          <span className="text-muted-foreground">
+            {me?.profile?.full_name ?? me?.profile?.username ?? ""}
+          </span>
+          {me?.isAdmin && (
+            <Link to="/admin">
+              <Button variant="outline" size="sm"><Shield className="mr-2 h-4 w-4" /> Admin</Button>
+            </Link>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={async () => {
+              await supabase.auth.signOut();
+              navigate({ to: "/auth" });
+            }}
+          >
+            <LogOut className="mr-2 h-4 w-4" /> Sair
+          </Button>
+        </div>
         <header className="mb-12 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-medium text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5 text-primary" />

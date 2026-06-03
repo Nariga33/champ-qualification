@@ -18,7 +18,9 @@ import { ArrowLeft, BookOpen, Plus, Trash2, Loader2, Save, FolderOpen, Library }
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import {
-  CATEGORY_META, type KnowledgeBase, type KnowledgeCategory, type KnowledgeItem, type Priority,
+  CATEGORY_META_BY_OP, OPERATION_LABEL,
+  type KnowledgeBase, type KnowledgeItem, type Operation, type Priority,
+  type CategoryItems,
 } from "@/features/knowledge-base/types";
 
 export const Route = createFileRoute("/_authenticated/knowledge-base")({
@@ -55,6 +57,7 @@ function KnowledgeBasePage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [knowledge, setKnowledge] = useState<KnowledgeBase>({});
+  const [operation, setOperation] = useState<Operation>("outbound");
 
   const loadSegment = async (id: string | null) => {
     if (!id) {
@@ -66,7 +69,13 @@ function KnowledgeBasePage() {
     setSelectedId(seg.id);
     setName(seg.name);
     setDescription(seg.description ?? "");
-    setKnowledge((seg.knowledge ?? {}) as KnowledgeBase);
+    const k = (seg.knowledge ?? {}) as any;
+    // backward-compat: se vier no formato antigo (sem outbound/inbound), trate como outbound
+    if (k && (k.outbound || k.inbound)) {
+      setKnowledge(k as KnowledgeBase);
+    } else {
+      setKnowledge({ outbound: k, inbound: {} });
+    }
   };
 
   const saveMut = useMutation({
@@ -97,9 +106,14 @@ function KnowledgeBasePage() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao remover"),
   });
 
-  const updateCategory = (cat: KnowledgeCategory, items: KnowledgeItem[]) => {
-    setKnowledge((k) => ({ ...k, [cat]: items }));
+  const updateCategory = (op: Operation, cat: string, items: KnowledgeItem[]) => {
+    setKnowledge((k) => ({
+      ...k,
+      [op]: { ...(k[op] ?? {}), [cat]: items },
+    }));
   };
+
+  const currentCats: CategoryItems = knowledge[operation] ?? {};
 
   if (meLoading) {
     return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
@@ -194,23 +208,37 @@ function KnowledgeBasePage() {
             </Card>
 
             <Card className="border-border bg-card p-6">
-              <Tabs defaultValue={CATEGORY_META[0].key}>
+              <div className="mb-4 flex items-center gap-2 border-b border-border pb-4">
+                <Label className="text-sm">Operação:</Label>
+                {(["outbound","inbound"] as Operation[]).map((op) => (
+                  <Button
+                    key={op}
+                    type="button"
+                    size="sm"
+                    variant={operation === op ? "default" : "outline"}
+                    onClick={() => setOperation(op)}
+                  >
+                    {OPERATION_LABEL[op]}
+                  </Button>
+                ))}
+              </div>
+              <Tabs key={operation} defaultValue={CATEGORY_META_BY_OP[operation][0].key}>
                 <TabsList className="flex h-auto flex-wrap justify-start gap-1 bg-transparent p-0">
-                  {CATEGORY_META.map((c) => (
+                  {CATEGORY_META_BY_OP[operation].map((c) => (
                     <TabsTrigger key={c.key} value={c.key} className="data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
                       {c.label}
-                      {knowledge[c.key]?.length ? (
-                        <Badge variant="secondary" className="ml-2">{knowledge[c.key]!.length}</Badge>
+                      {currentCats[c.key]?.length ? (
+                        <Badge variant="secondary" className="ml-2">{currentCats[c.key]!.length}</Badge>
                       ) : null}
                     </TabsTrigger>
                   ))}
                 </TabsList>
-                {CATEGORY_META.map((c) => (
+                {CATEGORY_META_BY_OP[operation].map((c) => (
                   <TabsContent key={c.key} value={c.key} className="mt-6">
                     <CategoryEditor
                       hint={c.hint}
-                      items={knowledge[c.key] ?? []}
-                      onChange={(items) => updateCategory(c.key, items)}
+                      items={currentCats[c.key] ?? []}
+                      onChange={(items) => updateCategory(operation, c.key, items)}
                     />
                   </TabsContent>
                 ))}

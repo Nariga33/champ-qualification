@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library, ListChecks } from "lucide-react";
+import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library, ListChecks, Mail, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +13,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { getMyProfile } from "@/lib/auth.functions";
 import { listSegments, saveAnalysis } from "@/lib/knowledge.functions";
+import { suggestKnowledgeFromCall } from "@/lib/knowledge-items.functions";
 import { InsightsView } from "@/features/knowledge-base/InsightsView";
 import type { CallInsights, Operation } from "@/features/knowledge-base/types";
 import { MODEL_FOR_OPERATION, OPERATION_LABEL } from "@/features/knowledge-base/types";
@@ -51,6 +52,7 @@ function Index() {
   const fetchProfile = useServerFn(getMyProfile);
   const fetchSegments = useServerFn(listSegments);
   const saveAnalysisFn = useServerFn(saveAnalysis);
+  const suggestFn = useServerFn(suggestKnowledgeFromCall);
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => fetchProfile() });
   const { data: segments } = useQuery({ queryKey: ["segments"], queryFn: () => fetchSegments() });
   const operation: Operation = (me?.operation as Operation) ?? "outbound";
@@ -224,6 +226,9 @@ function Index() {
           </span>
           <Link to="/history">
             <Button variant="outline" size="sm"><ListChecks className="mr-2 h-4 w-4" /> Histórico</Button>
+          </Link>
+          <Link to="/emails">
+            <Button variant="outline" size="sm"><Mail className="mr-2 h-4 w-4" /> E-mails</Button>
           </Link>
           {me?.isAdmin && (
             <>

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import o2Logo from "@/assets/o2-logo.png.asset.json";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -51,6 +52,9 @@ function AuthPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <Toaster theme="dark" />
       <Card className="w-full max-w-md p-8 border-border bg-card">
+        <div className="mb-6 flex justify-center">
+          <img src={o2Logo.url} alt="O2 Inc" className="h-12 w-auto" />
+        </div>
         <h1 className="text-2xl font-bold tracking-tight">Acessar a plataforma</h1>
         <p className="mt-1 text-sm text-muted-foreground">Use seu usuário e senha fornecidos pelo admin.</p>
         <form onSubmit={onSubmit} className="mt-6 space-y-4">

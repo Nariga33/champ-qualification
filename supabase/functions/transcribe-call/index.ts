@@ -1,6 +1,6 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-filename",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-filename, x-segment-id",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
     // 1) Receber áudio como corpo binário cru (evita issues de multipart no gateway)
     const contentType = req.headers.get("content-type") || "audio/webm";
     const filename = req.headers.get("x-filename") || "audio.webm";
+    const segmentId = req.headers.get("x-segment-id") || "";
     const audioBuffer = await req.arrayBuffer();
     if (!audioBuffer.byteLength) throw new Error("Arquivo de áudio é obrigatório");
     const audioBlob = new Blob([audioBuffer], { type: contentType });
@@ -166,6 +167,29 @@ Deno.serve(async (req) => {
     if (!transcript.trim()) throw new Error("Não foi possível transcrever o áudio");
     console.log(`Transcrição via ${provider}`);
 
+    // 2.5) Carregar base de conhecimento do segmento (se informado)
+    let segmentName = "";
+    let knowledgeBlock = "";
+    if (segmentId) {
+      try {
+        const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+        const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const segRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/segments?id=eq.${segmentId}&select=name,description,knowledge`,
+          { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+        );
+        if (segRes.ok) {
+          const rows = await segRes.json();
+          if (rows[0]) {
+            segmentName = rows[0].name;
+            knowledgeBlock = `Segmento: ${rows[0].name}\nDescrição: ${rows[0].description ?? ""}\nBase de conhecimento (JSON):\n${JSON.stringify(rows[0].knowledge ?? {}, null, 2)}`;
+          }
+        }
+      } catch (e) {
+        console.error("Falha ao carregar segmento:", e);
+      }
+    }
+
     // 3) Gerar resumo CRM + qualificação (score 0-100 + classificação) via tool calling
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -181,11 +205,26 @@ Deno.serve(async (req) => {
             role: "user",
             content:
               `Transcrição da cold call:\n\n${transcript}\n\n` +
+              (knowledgeBlock
+                ? `\nBASE DE CONHECIMENTO DO SEGMENTO (use para os insights):\n${knowledgeBlock}\n\n`
+                : "") +
               `Gere:\n` +
               `1) summary: o resumo CRM no formato definido (Markdown com emojis).\n` +
               `2) score: nota de 0 a 100 da qualidade do lead (BANT/SPIN — Budget, Authority, Need, Timing, fit, urgência, dor clara).\n` +
               `3) classification: "Quente" (>=70), "Morno" (40-69) ou "Frio" (<40).\n` +
-              `4) score_reasoning: 1-2 frases curtas justificando a nota.`,
+              `4) score_reasoning: 1-2 frases curtas justificando a nota.\n` +
+              (knowledgeBlock
+                ? `5) insights: objeto com a análise da condução da call pelo SDR Matheus, comparada à BASE DE CONHECIMENTO acima. Avalie SOMENTE a performance do BDR/SDR — NUNCA trate a fala do Matheus como dor do cliente.\n` +
+                  `   - resumo_geral: 2-3 frases.\n` +
+                  `   - nota_geral: 0-100 (qualidade da condução pelo SDR).\n` +
+                  `   - perguntas_faltantes: perguntas obrigatórias/recomendadas da base que NÃO foram feitas.\n` +
+                  `   - melhorias_perguntas: perguntas que foram feitas mas poderiam ser melhores — {feita, sugestao}.\n` +
+                  `   - objecoes_identificadas: objeções do lead na call — {objecao, quebra_recomendada (use a base)}.\n` +
+                  `   - oportunidades_perdidas: momentos onde o SDR deixou de aprofundar.\n` +
+                  `   - pontos_positivos: o que o SDR fez bem.\n` +
+                  `   - feedback_por_trecho: array com {trecho (frase aproximada da call), problema, sugestao (ex: "poderia ter usado a pergunta X" ou "caberia a quebra de objeção Y")}.\n` +
+                  `   - plano_de_acao: 3-5 ações práticas para a próxima call.\n`
+                : ""),
           },
         ],
         tools: [
@@ -201,6 +240,54 @@ Deno.serve(async (req) => {
                   score: { type: "integer", minimum: 0, maximum: 100 },
                   classification: { type: "string", enum: ["Quente", "Morno", "Frio"] },
                   score_reasoning: { type: "string" },
+                  insights: {
+                    type: "object",
+                    properties: {
+                      resumo_geral: { type: "string" },
+                      nota_geral: { type: "integer", minimum: 0, maximum: 100 },
+                      perguntas_faltantes: { type: "array", items: { type: "string" } },
+                      melhorias_perguntas: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: { feita: { type: "string" }, sugestao: { type: "string" } },
+                          required: ["feita", "sugestao"],
+                          additionalProperties: false,
+                        },
+                      },
+                      objecoes_identificadas: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: { objecao: { type: "string" }, quebra_recomendada: { type: "string" } },
+                          required: ["objecao", "quebra_recomendada"],
+                          additionalProperties: false,
+                        },
+                      },
+                      oportunidades_perdidas: { type: "array", items: { type: "string" } },
+                      pontos_positivos: { type: "array", items: { type: "string" } },
+                      feedback_por_trecho: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            trecho: { type: "string" },
+                            problema: { type: "string" },
+                            sugestao: { type: "string" },
+                          },
+                          required: ["trecho", "problema", "sugestao"],
+                          additionalProperties: false,
+                        },
+                      },
+                      plano_de_acao: { type: "array", items: { type: "string" } },
+                    },
+                    required: [
+                      "resumo_geral","nota_geral","perguntas_faltantes","melhorias_perguntas",
+                      "objecoes_identificadas","oportunidades_perdidas","pontos_positivos",
+                      "feedback_por_trecho","plano_de_acao",
+                    ],
+                    additionalProperties: false,
+                  },
                 },
                 required: ["summary", "score", "classification", "score_reasoning"],
                 additionalProperties: false,
@@ -234,18 +321,20 @@ Deno.serve(async (req) => {
     let score = 0;
     let classification: "Quente" | "Morno" | "Frio" = "Frio";
     let score_reasoning = "";
+    let insights: unknown = null;
     try {
       const args = JSON.parse(toolCall?.function?.arguments ?? "{}");
       summary = args.summary ?? "";
       score = Math.max(0, Math.min(100, Number(args.score) || 0));
       classification = args.classification ?? (score >= 70 ? "Quente" : score >= 40 ? "Morno" : "Frio");
       score_reasoning = args.score_reasoning ?? "";
+      insights = args.insights ?? null;
     } catch (err) {
       console.error("Failed to parse tool call args:", err);
       summary = data.choices?.[0]?.message?.content ?? "";
     }
 
-    return new Response(JSON.stringify({ summary, score, classification, score_reasoning, transcript, provider }), {
+    return new Response(JSON.stringify({ summary, score, classification, score_reasoning, transcript, provider, insights, segment_name: segmentName }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

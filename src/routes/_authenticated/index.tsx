@@ -1,15 +1,19 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield } from "lucide-react";
+import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { getMyProfile } from "@/lib/auth.functions";
+import { listSegments, saveAnalysis } from "@/lib/knowledge.functions";
+import { InsightsView } from "@/features/knowledge-base/InsightsView";
+import type { CallInsights } from "@/features/knowledge-base/types";
 
 export const Route = createFileRoute("/_authenticated/")({
   component: Index,
@@ -43,7 +47,10 @@ const classMeta: Record<Classification, { color: string; bg: string; border: str
 function Index() {
   const navigate = useNavigate();
   const fetchProfile = useServerFn(getMyProfile);
+  const fetchSegments = useServerFn(listSegments);
+  const saveAnalysisFn = useServerFn(saveAnalysis);
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => fetchProfile() });
+  const { data: segments } = useQuery({ queryKey: ["segments"], queryFn: () => fetchSegments() });
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState("");
@@ -51,6 +58,12 @@ function Index() {
   const [classification, setClassification] = useState<Classification | null>(null);
   const [scoreReasoning, setScoreReasoning] = useState<string>("");
   const [audioInfo, setAudioInfo] = useState<string>("");
+  const [segmentId, setSegmentId] = useState<string>("");
+  const [insights, setInsights] = useState<CallInsights | null>(null);
+  const [segmentName, setSegmentName] = useState<string>("");
+  const [transcript, setTranscript] = useState<string>("");
+  const [savedAnalysisId, setSavedAnalysisId] = useState<string | null>(null);
+  const [savingAnalysis, setSavingAnalysis] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
@@ -75,6 +88,8 @@ function Index() {
     setScore(null);
     setClassification(null);
     setScoreReasoning("");
+    setInsights(null);
+    setSavedAnalysisId(null);
     try {
       const ext = blob.type.includes("mp3") ? "mp3" : blob.type.includes("wav") ? "wav" : blob.type.includes("mpeg") ? "mp3" : "webm";
       const filename = (blob instanceof File ? blob.name : `audio.${ext}`);
@@ -84,6 +99,7 @@ function Index() {
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           "Content-Type": blob.type || "audio/webm",
           "x-filename": filename,
+          ...(segmentId ? { "x-segment-id": segmentId } : {}),
         },
         body: blob,
       });
@@ -93,6 +109,9 @@ function Index() {
       setScore(typeof data.score === "number" ? data.score : null);
       setClassification((data.classification as Classification) ?? null);
       setScoreReasoning(data.score_reasoning ?? "");
+      setInsights((data.insights as CallInsights) ?? null);
+      setSegmentName(data.segment_name ?? "");
+      setTranscript(data.transcript ?? "");
       const item: HistoryItem = {
         id: crypto.randomUUID(),
         label,
@@ -155,6 +174,8 @@ function Index() {
     setScoreReasoning(item.scoreReasoning ?? "");
     setAudioInfo(`${item.label} • ${new Date(item.createdAt).toLocaleString("pt-BR")}`);
     setSelectedId(item.id);
+    setInsights(null);
+    setSavedAnalysisId(null);
   };
 
   const deleteItem = (id: string) => {
@@ -190,9 +211,14 @@ function Index() {
             {me?.profile?.full_name ?? me?.profile?.username ?? ""}
           </span>
           {me?.isAdmin && (
-            <Link to="/admin">
-              <Button variant="outline" size="sm"><Shield className="mr-2 h-4 w-4" /> Admin</Button>
-            </Link>
+            <>
+              <Link to="/knowledge-base">
+                <Button variant="outline" size="sm"><Library className="mr-2 h-4 w-4" /> Base de Conhecimento</Button>
+              </Link>
+              <Link to="/admin">
+                <Button variant="outline" size="sm"><Shield className="mr-2 h-4 w-4" /> Admin</Button>
+              </Link>
+            </>
           )}
           <Button
             variant="ghost"
@@ -219,6 +245,37 @@ function Index() {
         </header>
 
         <Card className="border-border bg-card p-8">
+          <div className="mb-6">
+            <label className="mb-2 block text-sm font-medium">Segmento de mercado da call</label>
+            {segments && segments.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Select value={segmentId || "none"} onValueChange={(v) => setSegmentId(v === "none" ? "" : v)}>
+                  <SelectTrigger className="max-w-md">
+                    <SelectValue placeholder="Selecione um segmento (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem segmento (apenas resumo)</SelectItem>
+                    {segments.map((s: any) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Os insights da ligação serão cruzados com a base de conhecimento desse segmento.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+                Nenhuma base de conhecimento cadastrada ainda.
+                {me?.isAdmin && (
+                  <>
+                    {" "}
+                    <Link to="/knowledge-base" className="text-primary underline">Cadastrar agora</Link>.
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Button
               size="lg"
@@ -305,6 +362,38 @@ function Index() {
               className="min-h-[480px] resize-y bg-background font-mono text-sm leading-relaxed"
             />
           </Card>
+        )}
+
+        {insights && (
+          <InsightsView
+            insights={insights}
+            segmentName={segmentName}
+            saving={savingAnalysis}
+            saved={!!savedAnalysisId}
+            onSave={async () => {
+              setSavingAnalysis(true);
+              try {
+                const row: any = await saveAnalysisFn({
+                  data: {
+                    segment_id: segmentId || null,
+                    label: audioInfo,
+                    transcript,
+                    summary,
+                    score,
+                    classification,
+                    score_reasoning: scoreReasoning,
+                    insights,
+                  },
+                });
+                setSavedAnalysisId(row?.id ?? "saved");
+                toast.success("Análise salva");
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Falha ao salvar");
+              } finally {
+                setSavingAnalysis(false);
+              }
+            }}
+          />
         )}
 
         {history.length > 0 && (

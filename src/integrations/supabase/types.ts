@@ -17,10 +17,13 @@ export type Database = {
       call_analyses: {
         Row: {
           classification: string | null
+          company: string | null
           created_at: string
           id: string
           insights: Json | null
           label: string | null
+          operation: Database["public"]["Enums"]["operation_type"] | null
+          qualification_model: string | null
           score: number | null
           score_reasoning: string | null
           segment_id: string | null
@@ -30,10 +33,13 @@ export type Database = {
         }
         Insert: {
           classification?: string | null
+          company?: string | null
           created_at?: string
           id?: string
           insights?: Json | null
           label?: string | null
+          operation?: Database["public"]["Enums"]["operation_type"] | null
+          qualification_model?: string | null
           score?: number | null
           score_reasoning?: string | null
           segment_id?: string | null
@@ -43,10 +49,13 @@ export type Database = {
         }
         Update: {
           classification?: string | null
+          company?: string | null
           created_at?: string
           id?: string
           insights?: Json | null
           label?: string | null
+          operation?: Database["public"]["Enums"]["operation_type"] | null
+          qualification_model?: string | null
           score?: number | null
           score_reasoning?: string | null
           segment_id?: string | null
@@ -69,6 +78,7 @@ export type Database = {
           created_at: string
           full_name: string
           id: string
+          operation: Database["public"]["Enums"]["operation_type"]
           updated_at: string
           user_id: string
           username: string
@@ -77,6 +87,7 @@ export type Database = {
           created_at?: string
           full_name: string
           id?: string
+          operation?: Database["public"]["Enums"]["operation_type"]
           updated_at?: string
           user_id: string
           username: string
@@ -85,6 +96,7 @@ export type Database = {
           created_at?: string
           full_name?: string
           id?: string
+          operation?: Database["public"]["Enums"]["operation_type"]
           updated_at?: string
           user_id?: string
           username?: string
@@ -157,6 +169,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "sdr"
+      operation_type: "outbound" | "inbound"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -285,6 +298,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "sdr"],
+      operation_type: ["outbound", "inbound"],
     },
   },
 } as const

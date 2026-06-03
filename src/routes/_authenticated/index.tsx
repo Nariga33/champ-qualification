@@ -1,9 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library } from "lucide-react";
+import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
@@ -13,7 +14,8 @@ import { useQuery } from "@tanstack/react-query";
 import { getMyProfile } from "@/lib/auth.functions";
 import { listSegments, saveAnalysis } from "@/lib/knowledge.functions";
 import { InsightsView } from "@/features/knowledge-base/InsightsView";
-import type { CallInsights } from "@/features/knowledge-base/types";
+import type { CallInsights, Operation } from "@/features/knowledge-base/types";
+import { MODEL_FOR_OPERATION, OPERATION_LABEL } from "@/features/knowledge-base/types";
 
 export const Route = createFileRoute("/_authenticated/")({
   component: Index,
@@ -51,6 +53,8 @@ function Index() {
   const saveAnalysisFn = useServerFn(saveAnalysis);
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => fetchProfile() });
   const { data: segments } = useQuery({ queryKey: ["segments"], queryFn: () => fetchSegments() });
+  const operation: Operation = (me?.operation as Operation) ?? "outbound";
+  const model = MODEL_FOR_OPERATION[operation];
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState("");
@@ -59,6 +63,7 @@ function Index() {
   const [scoreReasoning, setScoreReasoning] = useState<string>("");
   const [audioInfo, setAudioInfo] = useState<string>("");
   const [segmentId, setSegmentId] = useState<string>("");
+  const [company, setCompany] = useState<string>("");
   const [insights, setInsights] = useState<CallInsights | null>(null);
   const [segmentName, setSegmentName] = useState<string>("");
   const [transcript, setTranscript] = useState<string>("");
@@ -100,6 +105,8 @@ function Index() {
           "Content-Type": blob.type || "audio/webm",
           "x-filename": filename,
           ...(segmentId ? { "x-segment-id": segmentId } : {}),
+          "x-operation": operation,
+          ...(company ? { "x-company": encodeURIComponent(company) } : {}),
         },
         body: blob,
       });
@@ -209,7 +216,15 @@ function Index() {
         <div className="mb-6 flex items-center justify-end gap-2 text-sm">
           <span className="text-muted-foreground">
             {me?.profile?.full_name ?? me?.profile?.username ?? ""}
+            {me?.profile && (
+              <span className={`ml-2 rounded-full border px-2 py-0.5 text-xs font-medium ${operation === "inbound" ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300" : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"}`}>
+                Operação: {OPERATION_LABEL[operation]}
+              </span>
+            )}
           </span>
+          <Link to="/history">
+            <Button variant="outline" size="sm"><ListChecks className="mr-2 h-4 w-4" /> Histórico</Button>
+          </Link>
           {me?.isAdmin && (
             <>
               <Link to="/knowledge-base">
@@ -261,7 +276,7 @@ function Index() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Os insights da ligação serão cruzados com a base de conhecimento desse segmento.
+                  Os insights da ligação serão cruzados com a base de conhecimento desse segmento ({model}).
                 </p>
               </div>
             ) : (
@@ -275,6 +290,10 @@ function Index() {
                 )}
               </div>
             )}
+          </div>
+          <div className="mb-6">
+            <label className="mb-2 block text-sm font-medium">Empresa do lead (opcional)</label>
+            <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Ex.: Acme Indústria" className="max-w-md" />
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Button
@@ -351,7 +370,11 @@ function Index() {
         {summary && (
           <Card className="mt-8 border-border bg-card p-8">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Resumo CRM</h2>
+              <h2 className="text-xl font-semibold">Resumo CRM
+                <span className={`ml-3 rounded-full border px-2 py-0.5 align-middle text-xs font-medium ${operation === "inbound" ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300" : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"}`}>
+                  Operação: {OPERATION_LABEL[operation]}
+                </span>
+              </h2>
               <Button onClick={copy} variant="default" size="sm">
                 <Copy className="mr-2 h-4 w-4" /> Copiar para o CRM
               </Button>
@@ -377,6 +400,9 @@ function Index() {
                   data: {
                     segment_id: segmentId || null,
                     label: audioInfo,
+                    company: company || undefined,
+                    operation,
+                    qualification_model: model,
                     transcript,
                     summary,
                     score,

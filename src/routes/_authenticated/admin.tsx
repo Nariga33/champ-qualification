@@ -8,6 +8,7 @@ import {
   deleteUserById,
   resetUserPassword,
   getMyProfile,
+  updateUserOperation,
 } from "@/lib/auth.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ function AdminPage() {
   const createUser = useServerFn(createSdrUser);
   const deleteUser = useServerFn(deleteUserById);
   const resetPw = useServerFn(resetUserPassword);
+  const updateOp = useServerFn(updateUserOperation);
 
   const { data: me, isLoading: meLoading } = useQuery({ queryKey: ["me"], queryFn: () => fetchProfile() });
   const { data: users, isLoading } = useQuery({
@@ -43,12 +45,13 @@ function AdminPage() {
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("O2Inc*");
   const [role, setRole] = useState<"sdr" | "admin">("sdr");
+  const [operation, setOperation] = useState<"outbound" | "inbound">("outbound");
 
   const createMut = useMutation({
-    mutationFn: () => createUser({ data: { username, fullName, password, role } }),
+    mutationFn: () => createUser({ data: { username, fullName, password, role, operation } }),
     onSuccess: (r) => {
       toast.success(`Usuário ${r.username} criado (senha: ${r.password})`);
-      setUsername(""); setFullName(""); setPassword("O2Inc*"); setRole("sdr");
+      setUsername(""); setFullName(""); setPassword("O2Inc*"); setRole("sdr"); setOperation("outbound");
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao criar"),
@@ -68,6 +71,15 @@ function AdminPage() {
       resetPw({ data: { user_id, password } }),
     onSuccess: () => toast.success("Senha redefinida"),
     onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao redefinir"),
+  });
+
+  const opMut = useMutation({
+    mutationFn: (vars: { user_id: string; operation: "outbound" | "inbound" }) => updateOp({ data: vars }),
+    onSuccess: () => {
+      toast.success("Operação atualizada");
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao atualizar operação"),
   });
 
   if (meLoading) {
@@ -128,6 +140,17 @@ function AdminPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Operação *</Label>
+              <Select value={operation} onValueChange={(v) => setOperation(v as "outbound" | "inbound")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="outbound">Outbound — CHAMP</SelectItem>
+                  <SelectItem value="inbound">Inbound — BANT</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Define a metodologia de qualificação usada nas calls desse usuário.</p>
+            </div>
             <div className="md:col-span-2">
               <Button type="submit" disabled={createMut.isPending}>
                 {createMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
@@ -148,10 +171,23 @@ function AdminPage() {
                   <div className="min-w-0">
                     <div className="font-medium">{u.full_name}</div>
                     <div className="text-xs text-muted-foreground">
-                      @{u.username} · {u.roles.join(", ") || "sem papel"}
+                      @{u.username} · {u.roles.join(", ") || "sem papel"} ·{" "}
+                      <span className={u.operation === "inbound" ? "text-cyan-400" : "text-emerald-400"}>
+                        {u.operation === "inbound" ? "Inbound — BANT" : "Outbound — CHAMP"}
+                      </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Select
+                      value={(u.operation as "outbound" | "inbound") ?? "outbound"}
+                      onValueChange={(v) => opMut.mutate({ user_id: u.user_id, operation: v as "outbound" | "inbound" })}
+                    >
+                      <SelectTrigger className="h-8 w-[160px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="outbound">Outbound — CHAMP</SelectItem>
+                        <SelectItem value="inbound">Inbound — BANT</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <Button
                       variant="outline" size="sm"
                       onClick={() => {

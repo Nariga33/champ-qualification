@@ -114,7 +114,7 @@ export const setKnowledgeItemStatus = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const patch: Record<string, unknown> = { status: data.status };
+    const patch: { status: typeof data.status; approved_by?: string } = { status: data.status };
     if (data.status === "active") patch.approved_by = userId;
     const { data: row, error } = await supabase
       .from("knowledge_items")

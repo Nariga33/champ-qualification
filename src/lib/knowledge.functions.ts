@@ -125,7 +125,7 @@ export const saveAnalysis = createServerFn({ method: "POST" })
         score: data.score ?? null,
         classification: data.classification ?? null,
         score_reasoning: data.score_reasoning ?? null,
-        insights: data.insights ?? null,
+        insights: (data.insights ?? null) as any,
       })
       .select()
       .single();

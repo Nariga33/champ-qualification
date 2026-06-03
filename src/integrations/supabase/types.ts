@@ -14,6 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      call_analyses: {
+        Row: {
+          classification: string | null
+          created_at: string
+          id: string
+          insights: Json | null
+          label: string | null
+          score: number | null
+          score_reasoning: string | null
+          segment_id: string | null
+          summary: string | null
+          transcript: string | null
+          user_id: string
+        }
+        Insert: {
+          classification?: string | null
+          created_at?: string
+          id?: string
+          insights?: Json | null
+          label?: string | null
+          score?: number | null
+          score_reasoning?: string | null
+          segment_id?: string | null
+          summary?: string | null
+          transcript?: string | null
+          user_id: string
+        }
+        Update: {
+          classification?: string | null
+          created_at?: string
+          id?: string
+          insights?: Json | null
+          label?: string | null
+          score?: number | null
+          score_reasoning?: string | null
+          segment_id?: string | null
+          summary?: string | null
+          transcript?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_analyses_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "segments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -38,6 +88,36 @@ export type Database = {
           updated_at?: string
           user_id?: string
           username?: string
+        }
+        Relationships: []
+      }
+      segments: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          knowledge: Json
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          knowledge?: Json
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          knowledge?: Json
+          name?: string
+          updated_at?: string
         }
         Relationships: []
       }

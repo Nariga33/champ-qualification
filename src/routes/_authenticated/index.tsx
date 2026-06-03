@@ -427,6 +427,34 @@ function Index() {
           />
         )}
 
+        {insights && savedAnalysisId && me?.isAdmin && (
+          <Card className="mt-6 border-amber-500/30 bg-amber-500/5 p-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3">
+                <Lightbulb className="mt-1 h-5 w-5 text-amber-400" />
+                <div>
+                  <h3 className="font-semibold">Transformar esta ligação em aprendizado</h3>
+                  <p className="text-sm text-muted-foreground">
+                    A IA vai sugerir novas objeções, dores, perguntas e quebras observadas. Você revisa antes de adicionar à base.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={async () => {
+                  try {
+                    const r: any = await suggestFn({ data: { analysis_id: savedAnalysisId } });
+                    toast.success(`${r?.inserted ?? 0} sugestões criadas. Revise em Base de Conhecimento > Sugestões de Calls.`);
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Falha ao gerar sugestões");
+                  }
+                }}
+              >
+                <Sparkles className="mr-2 h-4 w-4" /> Gerar conhecimento desta ligação
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {history.length > 0 && (
           <Card className="mt-8 border-border bg-card p-8">
             <div className="mb-4 flex items-center justify-between">

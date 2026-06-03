@@ -73,6 +73,124 @@ export type Database = {
           },
         ]
       }
+      email_templates: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          objective: string | null
+          operation: Database["public"]["Enums"]["operation_type"] | null
+          pain: string | null
+          preview: string | null
+          segment_id: string | null
+          stage: string | null
+          subject: string
+          tone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          objective?: string | null
+          operation?: Database["public"]["Enums"]["operation_type"] | null
+          pain?: string | null
+          preview?: string | null
+          segment_id?: string | null
+          stage?: string | null
+          subject: string
+          tone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          objective?: string | null
+          operation?: Database["public"]["Enums"]["operation_type"] | null
+          pain?: string | null
+          preview?: string | null
+          segment_id?: string | null
+          stage?: string | null
+          subject?: string
+          tone?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_templates_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "segments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      knowledge_items: {
+        Row: {
+          approved_by: string | null
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          example: string | null
+          id: string
+          operation: Database["public"]["Enums"]["operation_type"]
+          priority: string
+          segment_id: string
+          source: Database["public"]["Enums"]["knowledge_source"]
+          source_ref: string | null
+          status: Database["public"]["Enums"]["knowledge_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          approved_by?: string | null
+          category: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          example?: string | null
+          id?: string
+          operation: Database["public"]["Enums"]["operation_type"]
+          priority?: string
+          segment_id: string
+          source?: Database["public"]["Enums"]["knowledge_source"]
+          source_ref?: string | null
+          status?: Database["public"]["Enums"]["knowledge_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          approved_by?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          example?: string | null
+          id?: string
+          operation?: Database["public"]["Enums"]["operation_type"]
+          priority?: string
+          segment_id?: string
+          source?: Database["public"]["Enums"]["knowledge_source"]
+          source_ref?: string | null
+          status?: Database["public"]["Enums"]["knowledge_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_items_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "segments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -169,6 +287,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "sdr"
+      knowledge_source: "manual" | "pdf" | "call"
+      knowledge_status: "pending" | "active" | "inactive" | "rejected"
       operation_type: "outbound" | "inbound"
     }
     CompositeTypes: {
@@ -298,6 +418,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "sdr"],
+      knowledge_source: ["manual", "pdf", "call"],
+      knowledge_status: ["pending", "active", "inactive", "rejected"],
       operation_type: ["outbound", "inbound"],
     },
   },

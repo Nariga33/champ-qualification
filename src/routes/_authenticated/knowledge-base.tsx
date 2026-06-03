@@ -22,6 +22,9 @@ import {
   type KnowledgeBase, type KnowledgeItem, type Operation, type Priority,
   type CategoryItems,
 } from "@/features/knowledge-base/types";
+import { PdfImportTab } from "@/features/knowledge-base/PdfImportTab";
+import { CallSuggestionsTab } from "@/features/knowledge-base/CallSuggestionsTab";
+import { ActiveBaseTab } from "@/features/knowledge-base/ActiveBaseTab";
 
 export const Route = createFileRoute("/_authenticated/knowledge-base")({
   component: KnowledgeBasePage,
@@ -146,6 +149,15 @@ function KnowledgeBasePage() {
           <Link to="/"><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" /> Voltar</Button></Link>
         </div>
 
+        <Tabs defaultValue="manual" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="manual">Manual</TabsTrigger>
+            <TabsTrigger value="pdf">Importar PDF</TabsTrigger>
+            <TabsTrigger value="calls">Sugestões de Calls</TabsTrigger>
+            <TabsTrigger value="active">Base Ativa</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="manual">
         <div className="grid gap-6 md:grid-cols-[280px_1fr]">
           <Card className="border-border bg-card p-4">
             <div className="mb-3 flex items-center justify-between">
@@ -246,6 +258,12 @@ function KnowledgeBasePage() {
             </Card>
           </div>
         </div>
+          </TabsContent>
+
+          <TabsContent value="pdf"><PdfImportTab /></TabsContent>
+          <TabsContent value="calls"><CallSuggestionsTab /></TabsContent>
+          <TabsContent value="active"><ActiveBaseTab /></TabsContent>
+        </Tabs>
       </div>
     </div>
   );

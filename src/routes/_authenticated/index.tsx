@@ -17,6 +17,7 @@ import { suggestKnowledgeFromCall } from "@/lib/knowledge-items.functions";
 import { InsightsView } from "@/features/knowledge-base/InsightsView";
 import type { CallInsights, Operation } from "@/features/knowledge-base/types";
 import { MODEL_FOR_OPERATION, OPERATION_LABEL } from "@/features/knowledge-base/types";
+import o2Logo from "@/assets/o2-logo.png.asset.json";
 
 export const Route = createFileRoute("/_authenticated/")({
   component: Index,
@@ -252,6 +253,9 @@ function Index() {
           </Button>
         </div>
         <header className="mb-12 text-center">
+          <div className="mb-6 flex justify-center">
+            <img src={o2Logo.url} alt="O2 Inc" className="h-14 w-auto" />
+          </div>
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-medium text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
             Powered by AI

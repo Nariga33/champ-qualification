@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library, ListChecks, Mail, Lightbulb } from "lucide-react";
+import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library, ListChecks, Mail, Lightbulb, PhoneCall } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -67,6 +67,8 @@ function Index() {
   const [audioInfo, setAudioInfo] = useState<string>("");
   const [segmentId, setSegmentId] = useState<string>("");
   const [company, setCompany] = useState<string>("");
+  const [dialPhone, setDialPhone] = useState<string>("");
+  const [dialing, setDialing] = useState(false);
   const [insights, setInsights] = useState<CallInsights | null>(null);
   const [segmentName, setSegmentName] = useState<string>("");
   const [transcript, setTranscript] = useState<string>("");
@@ -201,6 +203,25 @@ function Index() {
     }
   };
 
+  const dialCall = async () => {
+    const phone = dialPhone.trim();
+    if (!phone) return;
+    setDialing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("dial", {
+        body: { phone, segmentId: segmentId || undefined, company: company || undefined },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success("Ligando… a análise aparece no Histórico ao desligar.");
+      setDialPhone("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao iniciar a ligação");
+    } finally {
+      setDialing(false);
+    }
+  };
+
   const clearHistory = () => {
     persist([]);
     setSelectedId(null);
@@ -304,6 +325,29 @@ function Index() {
             <label className="mb-2 block text-sm font-medium">Empresa do lead (opcional)</label>
             <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Ex.: Acme Indústria" className="max-w-md" />
           </div>
+          <div className="mb-6">
+            <label className="mb-2 block text-sm font-medium">Ligar pelo discador (API4Com)</label>
+            <div className="flex flex-wrap items-center gap-3">
+              <Input
+                value={dialPhone}
+                onChange={(e) => setDialPhone(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !dialing && dialCall()}
+                placeholder="Ex.: +5511999998888"
+                className="max-w-xs"
+                disabled={dialing || loading}
+              />
+              <Button onClick={dialCall} disabled={dialing || loading || !dialPhone.trim()}>
+                {dialing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PhoneCall className="mr-2 h-4 w-4" />}
+                {dialing ? "Ligando…" : "Ligar"}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                A ligação toca no seu ramal; ao desligar, a gravação dos dois lados é transcrita e qualificada automaticamente.
+              </p>
+            </div>
+          </div>
+
+          <div className="mb-4 text-center text-xs uppercase tracking-widest text-muted-foreground">ou grave / envie o áudio</div>
+
           <div className="grid gap-4 md:grid-cols-2">
             <Button
               size="lg"

@@ -1,3 +1,11 @@
 project_id = "rvzmodhjadchfdhwrwxc"
 [functions.transcribe-call]
 verify_jwt = false
+
+# Origina ligações no API4Com — exige sessão do usuário.
+[functions.dial]
+verify_jwt = true
+
+# Recebe channel-hangup do API4Com — público, protegido por ?secret=.
+[functions.api4com-webhook]
+verify_jwt = false

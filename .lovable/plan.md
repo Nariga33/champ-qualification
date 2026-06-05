@@ -1,88 +1,109 @@
-## Evolução da Base de Conhecimento + Gerador de E-mails
+## Objetivo
 
-Vou adicionar 4 grandes capacidades à área admin de Base de Conhecimento e criar um novo módulo de geração de e-mails, mantendo a arquitetura feature-based atual (`src/features/knowledge-base/`, `src/lib/*.functions.ts`).
+Transformar cada ligação enviada/gravada num registro permanente: áudio + transcrição diarizada + análises + estado de processamento, com regras fixas de papel (Outbound→BDR/CHAMP, Inbound→SDR/BANT) e tela de Detalhes da Call.
 
-### 1. Schema (nova migration)
+---
 
-**Nova tabela `knowledge_items`** (versionada, granular, com origem):
-- `id`, `segment_id` (fk), `operation` (outbound/inbound), `category` (texto: discovery_required, pains, objections, etc.)
-- `title`, `description`, `example`, `priority` (alta/media/baixa)
-- `source` (enum: `manual` | `pdf` | `call`), `source_ref` (uuid nullable — call_analysis_id ou pdf import id)
-- `status` (enum: `pending` | `active` | `inactive` | `rejected`)
-- `created_by`, `approved_by`, `created_at`, `updated_at`
-- RLS: admin full; authenticated SELECT só `active`.
+## 1. Banco de dados (migration)
 
-**Nova tabela `email_templates`** (templates salvos):
-- `id`, `user_id`, `segment_id`, `operation`, `objective`, `tone`, `subject`, `preview`, `body`, `created_at`. RLS por user_id + admin.
+**Bucket privado `call-audio`** com RLS: dono (`(storage.foldername(name))[1] = auth.uid()::text`) ou admin (`has_role`).
 
-A JSONB `segments.knowledge` continua funcionando (legado/cadastro rápido manual). A tela de Base passa a unificar leitura: items da JSONB + items da nova tabela com `status='active'`. Novos itens passam por `knowledge_items` para ter origem/versionamento.
+**Enum `call_status`**: `received | transcribing | awaiting_speaker_review | summarizing | analyzing | completed | error`.
 
-### 2. Server functions (`src/lib/knowledge.functions.ts` + novos)
+**Enum `audio_origin`**: `upload | recording`.
 
-- `listKnowledgeItems({ segment_id, operation, status?, source?, category?, search? })`
-- `upsertKnowledgeItem`, `approveKnowledgeItem`, `rejectKnowledgeItem`, `setKnowledgeItemStatus`
-- `importPdfPlaybook({ segment_id, base64Pdf })` — extrai texto via `pdfjs-dist` (server), envia ao Lovable AI (gemini-2.5-flash) com prompt estruturado → retorna lista de itens `pending` agrupados por categoria, persiste como `source='pdf'`, `status='pending'`.
-- `suggestFromCall({ analysis_id })` — pega call_analysis, manda transcript+insights ao gemini → retorna sugestões `pending` com `source='call'`, `source_ref=analysis_id`.
-- `generateEmail({ segment_id, operation, pain, stage, objective, tone, analysis_id? })` — busca apenas knowledge `active` aprovado + dados opcionais da call → gera assunto/preview/corpo via Lovable AI; **prompt restringe a usar somente dores/objeções/argumentos fornecidos**.
-- `saveEmailTemplate`, `listEmailTemplates`.
+**Tabela `calls`** (nova, separada de `call_analyses` que fica intacta para histórico antigo):
+- `user_id`, `operation` (outbound/inbound), `commercial_role` (derivado: BDR/SDR), `qualification_model` (derivado: CHAMP/BANT)
+- `segment_id`, `company`, `lead_name`, `lead_phone`, `lead_email`
+- `audio_path` (storage), `audio_origin`, `audio_duration_seconds`, `audio_mime`
+- `status`, `error_message`
+- `transcript_segments` (jsonb: `[{start, end, speaker_raw, speaker_role: "lead"|"bdr"|"sdr", confidence, text}]`)
+- `transcript_text`, `speaker_review_required` (bool), `speakers_reviewed_at`
+- `summary` (text CRM), `score` (int), `classification`, `insights` (jsonb), `feedback_segments` (jsonb por trecho)
 
-### 3. UI — `src/routes/_authenticated/knowledge-base.tsx`
+RLS: usuário vê só `auth.uid() = user_id`; admin vê tudo (via `has_role`). GRANTs para `authenticated` e `service_role`.
 
-Reorganiza com tabs (`Tabs` shadcn):
-- **Manual** — fluxo atual de edição da JSONB por segmento.
-- **Importar PDF** — upload, loading, tela de revisão com lista agrupada por categoria; cada item tem Aprovar/Editar/Rejeitar; "Aprovar todos" em massa.
-- **Sugestões de Calls** — lista global de itens `pending` com `source='call'`, filtros por segmento/operação; mesmo fluxo Aprovar/Editar/Rejeitar.
-- **Base Ativa** — tabela unificada de itens `active` com filtros (segmento, categoria, origem, prioridade, busca textual), badge de origem, toggle ativo/inativo.
+---
 
-Componentes novos em `src/features/knowledge-base/`:
-- `PdfImportTab.tsx`, `CallSuggestionsTab.tsx`, `ActiveBaseTab.tsx`
-- `KnowledgeItemCard.tsx` (reusável: badge origem, ações)
-- `ReviewList.tsx` (lista de revisão genérica)
+## 2. Edge function `transcribe-call` (reescrita)
 
-### 4. Integração com tela de análise (`src/routes/_authenticated/index.tsx`)
+Entradas:
+- **`multipart/form-data`**: áudio + `operation`, `segment_id`, `company`, `lead_*`, `audio_origin` → cria `calls`, sobe áudio em `{user_id}/{call_id}.{ext}`, processa.
+- **JSON `{call_id, action: "reprocess"}`**: rebaixa speakers e refaz análise sem reupload.
+- **JSON `{call_id, action: "confirm_speakers", segments}`**: salva versão revisada e segue para summary/insights.
 
-Botão "Gerar conhecimento desta ligação" (apenas admin) ao lado de "Salvar análise" → chama `suggestFromCall` → toast "X sugestões criadas, revise em Base de Conhecimento > Sugestões de Calls".
+Pipeline:
+1. `status='transcribing'` → ElevenLabs Scribe (`scribe_v2`, `diarize=true`).
+2. Heurística: speaker com mais palavras de script de abertura → BDR/SDR (conforme `operation`); outro → Lead. Se confiança baixa → `awaiting_speaker_review`, parar.
+3. `status='summarizing'` → Lovable AI gera resumo CRM apenas com falas do Lead para dores/budget/autoridade, e BDR/SDR para condução.
+4. `status='analyzing'` → score CHAMP (outbound) ou BANT (inbound) + insights + feedback por trecho.
+5. `status='completed'`. Erro → `status='error'`, áudio preservado, mensagem em `error_message`.
 
-### 5. Novo módulo Gerador de E-mails
+---
 
-Nova rota `src/routes/_authenticated/emails.tsx` + feature `src/features/emails/`:
-- `EmailGeneratorForm.tsx` — selects: segmento, operação, dor principal (carregada de knowledge ativo do segmento), estágio, objetivo (prospecção/follow-up/retomada/quebra-objeção/material), tom (direto/consultivo/provocativo). Quando objetivo=follow-up, mostra select com últimas análises do usuário.
-- `EmailPreview.tsx` — exibe assunto, preview, corpo; botões Copiar/Gerar nova versão/Salvar template.
-- `TemplatesList.tsx` — templates salvos.
+## 3. Server functions (`src/lib/calls.functions.ts`)
+- `listCalls(filters)` — empresa, lead, usuário, operação, segmento, status, período.
+- `getCall(id)` — retorna call + signed URL do áudio (1h).
+- `confirmSpeakers(call_id, segments)` — chama edge `confirm_speakers`.
+- `reprocessCall(call_id)` — chama edge `reprocess`.
+- `deleteCall(id)` — admin ou dono.
 
-Link no header do `_authenticated` para `/emails`.
+`auth.functions.ts`: `getMyProfile` retorna `commercial_role` e `qualification_model` derivados de `operation`.
 
-### Tecnologias / pacotes
+---
 
-- `pdfjs-dist` para extrair texto do PDF no server (Worker-compatível em modo legacy).
-- Reusa Lovable AI Gateway (`LOVABLE_API_KEY` já configurado) com `google/gemini-2.5-flash`.
+## 4. Frontend (`src/features/calls/`)
 
-### Arquivos a criar/editar
+**Componentes reutilizáveis**:
+- `OperationRoleBadge.tsx` — renderiza "Outbound — BDR — CHAMP" / "Inbound — SDR — BANT".
+- `CallStatusBadge.tsx` — chips coloridos por status.
+- `TranscriptView.tsx` — formato conversa, filtro por speaker, balões Lead/BDR/SDR.
+- `SpeakerReviewDialog.tsx` — corrigir rótulos antes do resumo.
+- `CallAudioPlayer.tsx` — player fixo com signed URL.
+- `CallFilters.tsx`, `CallListItem.tsx`.
 
-**Criar:**
-- `supabase/migrations/{ts}_knowledge_items_and_emails.sql`
-- `src/lib/knowledge-items.functions.ts`
-- `src/lib/emails.functions.ts`
-- `src/lib/pdf-extract.server.ts`
-- `src/features/knowledge-base/PdfImportTab.tsx`
-- `src/features/knowledge-base/CallSuggestionsTab.tsx`
-- `src/features/knowledge-base/ActiveBaseTab.tsx`
-- `src/features/knowledge-base/KnowledgeItemCard.tsx`
-- `src/features/emails/EmailGeneratorForm.tsx`
-- `src/features/emails/EmailPreview.tsx`
-- `src/features/emails/types.ts`
-- `src/routes/_authenticated/emails.tsx`
+**Rotas**:
+- `_authenticated/index.tsx` — substituir uso de localStorage: upload/gravação grava em `calls` e redireciona para detalhes quando concluído (ou review se necessário).
+- `_authenticated/history.tsx` — listar `calls` com novos filtros (mantém análises antigas em aba separada se necessário).
+- `_authenticated/calls.$id.tsx` (novo) — Detalhes: player, transcrição filtrada, resumo copiável, insights, feedback, botão "Reprocessar".
+- `_authenticated/admin.tsx` — no form de usuário, só "Outbound" ou "Inbound"; mostra tag derivada.
 
-**Editar:**
-- `src/routes/_authenticated/knowledge-base.tsx` (adiciona tabs)
-- `src/routes/_authenticated/index.tsx` (botão "Gerar conhecimento")
-- `src/routes/_authenticated/route.tsx` (link header)
-- `supabase/functions/transcribe-call/index.ts` (passa a buscar knowledge_items active além da JSONB para enriquecer prompt)
+---
 
-### Critérios de sucesso
+## 5. Segurança & permissões
+- Storage policies por prefixo `{user_id}/`; admin via `has_role`.
+- Signed URLs apenas para usuários autorizados (server fn checa ownership/admin).
+- Sem URLs públicas para áudio.
 
-1. Admin importa PDF → vê itens extraídos agrupados por categoria → aprova/edita/rejeita → itens viram parte ativa da base.
-2. Em qualquer análise de call, admin clica "Gerar conhecimento" → sugestões aparecem na aba dedicada para revisão.
-3. Cada item tem origem visível (manual/pdf/call), segmento, operação, status, autor, data.
-4. Base ativa filtrável por segmento, categoria, origem, prioridade, busca.
-5. Gerador produz e-mail usando **apenas** dores/objeções/argumentos com `status='active'`; follow-up usa dados da call sem inventar.
+---
+
+## 6. Fora de escopo
+- Seek bidirecional transcrição↔áudio (waveform sync).
+- Treinamento custom de diarização.
+- Migração dos registros antigos de `call_analyses` para `calls` (ficam coexistindo; histórico novo passa a usar `calls`).
+- Export em massa.
+
+---
+
+## Estrutura técnica
+
+```
+src/
+├── features/calls/
+│   ├── types.ts
+│   ├── OperationRoleBadge.tsx
+│   ├── CallStatusBadge.tsx
+│   ├── CallAudioPlayer.tsx
+│   ├── TranscriptView.tsx
+│   ├── SpeakerReviewDialog.tsx
+│   ├── CallFilters.tsx
+│   └── CallListItem.tsx
+├── lib/calls.functions.ts
+├── routes/_authenticated/
+│   ├── calls.$id.tsx        (novo)
+│   ├── history.tsx          (refeito sobre `calls`)
+│   └── index.tsx            (upload/gravação → `calls`)
+└── supabase/functions/transcribe-call/index.ts  (reescrita)
+```
+
+Após aprovação, executo migration → reescrita da edge function → server fns → componentes/rotas.

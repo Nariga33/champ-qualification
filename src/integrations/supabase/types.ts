@@ -19,11 +19,16 @@ export type Database = {
           classification: string | null
           company: string | null
           created_at: string
+          direction: string | null
+          duration: number | null
+          external_call_id: string | null
           id: string
           insights: Json | null
           label: string | null
           operation: Database["public"]["Enums"]["operation_type"] | null
+          phone: string | null
           qualification_model: string | null
+          record_url: string | null
           score: number | null
           score_reasoning: string | null
           segment_id: string | null
@@ -35,11 +40,16 @@ export type Database = {
           classification?: string | null
           company?: string | null
           created_at?: string
+          direction?: string | null
+          duration?: number | null
+          external_call_id?: string | null
           id?: string
           insights?: Json | null
           label?: string | null
           operation?: Database["public"]["Enums"]["operation_type"] | null
+          phone?: string | null
           qualification_model?: string | null
+          record_url?: string | null
           score?: number | null
           score_reasoning?: string | null
           segment_id?: string | null
@@ -51,11 +61,16 @@ export type Database = {
           classification?: string | null
           company?: string | null
           created_at?: string
+          direction?: string | null
+          duration?: number | null
+          external_call_id?: string | null
           id?: string
           insights?: Json | null
           label?: string | null
           operation?: Database["public"]["Enums"]["operation_type"] | null
+          phone?: string | null
           qualification_model?: string | null
+          record_url?: string | null
           score?: number | null
           score_reasoning?: string | null
           segment_id?: string | null
@@ -193,6 +208,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          api4com_extension: string | null
           created_at: string
           full_name: string
           id: string
@@ -202,6 +218,7 @@ export type Database = {
           username: string
         }
         Insert: {
+          api4com_extension?: string | null
           created_at?: string
           full_name: string
           id?: string
@@ -211,6 +228,7 @@ export type Database = {
           username: string
         }
         Update: {
+          api4com_extension?: string | null
           created_at?: string
           full_name?: string
           id?: string

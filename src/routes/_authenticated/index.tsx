@@ -211,7 +211,14 @@ function Index() {
       const { data, error } = await supabase.functions.invoke("dial", {
         body: { phone, segmentId: segmentId || undefined, company: company || undefined },
       });
-      if (error) throw error;
+      if (error) {
+        let msg = error.message;
+        try {
+          const ctxBody = await (error as any).context?.json?.();
+          if (ctxBody?.error) msg = ctxBody.detail ? `${ctxBody.error}: ${ctxBody.detail}` : ctxBody.error;
+        } catch {}
+        throw new Error(msg);
+      }
       if ((data as any)?.error) throw new Error((data as any).error);
       toast.success("Ligando… a análise aparece no Histórico ao desligar.");
       setDialPhone("");

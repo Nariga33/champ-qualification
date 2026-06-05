@@ -10,13 +10,14 @@ import {
   getMyProfile,
   updateUserOperation,
   updateUserExtension,
+  updateUserSipPassword,
 } from "@/lib/auth.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Trash2, KeyRound, ArrowLeft, ShieldCheck } from "lucide-react";
+import { Loader2, Plus, Trash2, KeyRound, ArrowLeft, ShieldCheck, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -35,6 +36,7 @@ function AdminPage() {
   const resetPw = useServerFn(resetUserPassword);
   const updateOp = useServerFn(updateUserOperation);
   const updateExt = useServerFn(updateUserExtension);
+  const updateSip = useServerFn(updateUserSipPassword);
 
   const { data: me, isLoading: meLoading } = useQuery({ queryKey: ["me"], queryFn: () => fetchProfile() });
   const { data: users, isLoading } = useQuery({
@@ -49,12 +51,13 @@ function AdminPage() {
   const [role, setRole] = useState<"sdr" | "admin">("sdr");
   const [operation, setOperation] = useState<"outbound" | "inbound">("outbound");
   const [extension, setExtension] = useState("");
+  const [sipPassword, setSipPassword] = useState("");
 
   const createMut = useMutation({
-    mutationFn: () => createUser({ data: { username, fullName, password, role, operation, extension: extension || undefined } }),
+    mutationFn: () => createUser({ data: { username, fullName, password, role, operation, extension: extension || undefined, sipPassword: sipPassword || undefined } }),
     onSuccess: (r) => {
       toast.success(`Usuário ${r.username} criado (senha: ${r.password})`);
-      setUsername(""); setFullName(""); setPassword("O2Inc*"); setRole("sdr"); setOperation("outbound"); setExtension("");
+      setUsername(""); setFullName(""); setPassword("O2Inc*"); setRole("sdr"); setOperation("outbound"); setExtension(""); setSipPassword("");
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao criar"),
@@ -92,6 +95,12 @@ function AdminPage() {
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao atualizar ramal"),
+  });
+
+  const sipMut = useMutation({
+    mutationFn: (vars: { user_id: string; password: string | null }) => updateSip({ data: vars }),
+    onSuccess: () => toast.success("Senha SIP atualizada"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao atualizar senha SIP"),
   });
 
   if (meLoading) {
@@ -168,6 +177,11 @@ function AdminPage() {
               <Input value={extension} onChange={(e) => setExtension(e.target.value)} placeholder="Ex.: 1014" />
               <p className="text-xs text-muted-foreground">Ramal usado para originar as ligações desse SDR (opcional).</p>
             </div>
+            <div className="space-y-2">
+              <Label>Senha SIP</Label>
+              <Input type="password" value={sipPassword} onChange={(e) => setSipPassword(e.target.value)} placeholder="Senha SIP do ramal" />
+              <p className="text-xs text-muted-foreground">Habilita o softphone no app (atender no navegador). Vem do painel da API4Com.</p>
+            </div>
             <div className="md:col-span-2">
               <Button type="submit" disabled={createMut.isPending}>
                 {createMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
@@ -224,6 +238,16 @@ function AdminPage() {
                       }}
                     >
                       <KeyRound className="mr-2 h-4 w-4" /> Senha
+                    </Button>
+                    <Button
+                      variant="outline" size="sm"
+                      title="Senha SIP do ramal (softphone no app)"
+                      onClick={() => {
+                        const pw = prompt(`Senha SIP do ramal de @${u.username} (vazio remove):`, "");
+                        if (pw !== null) sipMut.mutate({ user_id: u.user_id, password: pw.trim() || null });
+                      }}
+                    >
+                      <PhoneCall className="mr-2 h-4 w-4" /> SIP
                     </Button>
                     <Button
                       variant="ghost" size="icon"

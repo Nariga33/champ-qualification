@@ -209,6 +209,7 @@ export type Database = {
       profiles: {
         Row: {
           api4com_extension: string | null
+          api4com_sip_password: string | null
           created_at: string
           full_name: string
           id: string
@@ -219,6 +220,7 @@ export type Database = {
         }
         Insert: {
           api4com_extension?: string | null
+          api4com_sip_password?: string | null
           created_at?: string
           full_name: string
           id?: string
@@ -229,6 +231,7 @@ export type Database = {
         }
         Update: {
           api4com_extension?: string | null
+          api4com_sip_password?: string | null
           created_at?: string
           full_name?: string
           id?: string

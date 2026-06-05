@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library, ListChecks, Mail, Lightbulb, PhoneCall } from "lucide-react";
+import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library, ListChecks, Mail, Lightbulb, PhoneCall, PhoneOff, MicOff } from "lucide-react";
+import { useSoftphone } from "@/hooks/useSoftphone";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,6 +49,22 @@ const classMeta: Record<Classification, { color: string; bg: string; border: str
   Frio: { color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30", icon: Snowflake },
 };
 
+function RamalBadge({ status, extension }: { status: string; extension: string | null }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    registered: { label: `Ramal ${extension ?? ""} pronto`, cls: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" },
+    connecting: { label: "Conectando ramal…", cls: "border-yellow-500/40 bg-yellow-500/10 text-yellow-300" },
+    unregistered: { label: "Ramal offline", cls: "border-ink-500/40 bg-muted text-muted-foreground" },
+    failed: { label: "Falha no ramal", cls: "border-red-500/40 bg-red-500/10 text-red-300" },
+    disabled: { label: "Ramal não configurado", cls: "border-ink-500/40 bg-muted text-muted-foreground" },
+  };
+  const meta = map[status] ?? map.disabled;
+  return (
+    <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${meta.cls}`}>
+      {meta.label}
+    </span>
+  );
+}
+
 function Index() {
   const navigate = useNavigate();
   const fetchProfile = useServerFn(getMyProfile);
@@ -69,6 +86,7 @@ function Index() {
   const [company, setCompany] = useState<string>("");
   const [dialPhone, setDialPhone] = useState<string>("");
   const [dialing, setDialing] = useState(false);
+  const sip = useSoftphone();
   const [insights, setInsights] = useState<CallInsights | null>(null);
   const [segmentName, setSegmentName] = useState<string>("");
   const [transcript, setTranscript] = useState<string>("");
@@ -333,7 +351,10 @@ function Index() {
             <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Ex.: Acme Indústria" className="max-w-md" />
           </div>
           <div className="mb-6">
-            <label className="mb-2 block text-sm font-medium">Ligar pelo discador (API4Com)</label>
+            <div className="mb-2 flex items-center gap-2">
+              <label className="text-sm font-medium">Ligar pelo discador (API4Com)</label>
+              <RamalBadge status={sip.status} extension={sip.extension} />
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <Input
                 value={dialPhone}
@@ -348,9 +369,32 @@ function Index() {
                 {dialing ? "Ligando…" : "Ligar"}
               </Button>
               <p className="text-xs text-muted-foreground">
-                A ligação toca no seu ramal; ao desligar, a gravação dos dois lados é transcrita e qualificada automaticamente.
+                {sip.status === "registered"
+                  ? "Atende no próprio app; ao desligar, a gravação dos dois lados é transcrita e qualificada."
+                  : "A ligação toca no seu ramal; ao desligar, a gravação dos dois lados é transcrita e qualificada."}
               </p>
             </div>
+
+            {sip.callState !== "idle" && (
+              <div className="mt-3 flex items-center gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+                <span className="text-sm font-medium text-emerald-300">
+                  {sip.callState === "ringing" ? "Tocando…" : "Em ligação"}
+                </span>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={sip.toggleMute}>
+                    {sip.muted ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+                    {sip.muted ? "Mudo" : "Mutar"}
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={sip.hangup}>
+                    <PhoneOff className="mr-2 h-4 w-4" /> Desligar
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mb-4 text-center text-xs uppercase tracking-widest text-muted-foreground">ou grave / envie o áudio</div>

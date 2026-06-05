@@ -10,6 +10,9 @@ const ADMIN_FULL_NAME = "Matheus Reis";
 const usernameToEmail = (u: string) =>
   `${u.toLowerCase().trim().replace(/[^a-z0-9._-]/g, "")}@${EMAIL_DOMAIN}`;
 
+const SIP_DOMAIN = process.env.API4COM_SIP_DOMAIN ?? "joaosoares.api4com.com";
+const SIP_PORT = process.env.API4COM_SIP_PORT ?? "6443";
+
 /** Idempotent: creates the seed admin if no admin exists yet. Safe to call anonymously. */
 export const ensureAdmin = createServerFn({ method: "POST" }).handler(async () => {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -67,6 +70,28 @@ export const getMyProfile = createServerFn({ method: "GET" })
     };
   });
 
+/** Credenciais SIP do próprio usuário, para o softphone WebRTC embarcado. */
+export const getMySipCredentials = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("api4com_extension, api4com_sip_password")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!profile?.api4com_extension || !profile?.api4com_sip_password) {
+      return { configured: false as const };
+    }
+    return {
+      configured: true as const,
+      extension: profile.api4com_extension as string,
+      password: profile.api4com_sip_password as string,
+      domain: SIP_DOMAIN,
+      wss: `wss://${SIP_DOMAIN}:${SIP_PORT}`,
+    };
+  });
+
 async function assertAdmin(supabase: any, userId: string) {
   const { data } = await supabase
     .from("user_roles")
@@ -100,7 +125,7 @@ export const listUsers = createServerFn({ method: "GET" })
 
 export const createSdrUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { username: string; fullName: string; password?: string; role?: "admin" | "sdr"; operation: "outbound" | "inbound"; extension?: string }) =>
+  .inputValidator((d: { username: string; fullName: string; password?: string; role?: "admin" | "sdr"; operation: "outbound" | "inbound"; extension?: string; sipPassword?: string }) =>
     z
       .object({
         username: z.string().min(2).max(64).regex(/^[a-zA-Z0-9._-]+$/),
@@ -109,6 +134,7 @@ export const createSdrUser = createServerFn({ method: "POST" })
         role: z.enum(["admin", "sdr"]).optional(),
         operation: z.enum(["outbound", "inbound"]),
         extension: z.string().max(20).optional(),
+        sipPassword: z.string().max(120).optional(),
       })
       .parse(d),
   )
@@ -126,11 +152,15 @@ export const createSdrUser = createServerFn({ method: "POST" })
       user_metadata: { username: data.username, full_name: data.fullName, role, operation: data.operation },
     });
     if (error) throw new Error(error.message);
-    // Garante operação e ramal no profile (caso o trigger já tenha rodado com default).
+    // Garante operação, ramal e senha SIP no profile (caso o trigger já tenha rodado).
     if (created.user) {
       await supabaseAdmin
         .from("profiles")
-        .update({ operation: data.operation, api4com_extension: data.extension?.trim() || null })
+        .update({
+          operation: data.operation,
+          api4com_extension: data.extension?.trim() || null,
+          api4com_sip_password: data.sipPassword?.trim() || null,
+        })
         .eq("user_id", created.user.id);
     }
     return { user_id: created.user?.id, username: data.username, email, password };
@@ -166,6 +196,24 @@ export const updateUserExtension = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({ api4com_extension: ext })
+      .eq("user_id", data.user_id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const updateUserSipPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { user_id: string; password: string | null }) =>
+    z.object({ user_id: z.string().uuid(), password: z.string().max(120).nullable() }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertAdmin(supabase, userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const pw = data.password?.trim() ? data.password.trim() : null;
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update({ api4com_sip_password: pw })
       .eq("user_id", data.user_id);
     if (error) throw new Error(error.message);
     return { ok: true };

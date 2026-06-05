@@ -85,7 +85,7 @@ export const listUsers = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: profiles, error } = await supabaseAdmin
       .from("profiles")
-      .select("user_id, username, full_name, operation, created_at")
+      .select("user_id, username, full_name, operation, api4com_extension, created_at")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     const { data: roles } = await supabaseAdmin.from("user_roles").select("user_id, role");
@@ -100,7 +100,7 @@ export const listUsers = createServerFn({ method: "GET" })
 
 export const createSdrUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { username: string; fullName: string; password?: string; role?: "admin" | "sdr"; operation: "outbound" | "inbound" }) =>
+  .inputValidator((d: { username: string; fullName: string; password?: string; role?: "admin" | "sdr"; operation: "outbound" | "inbound"; extension?: string }) =>
     z
       .object({
         username: z.string().min(2).max(64).regex(/^[a-zA-Z0-9._-]+$/),
@@ -108,6 +108,7 @@ export const createSdrUser = createServerFn({ method: "POST" })
         password: z.string().min(4).max(120).optional(),
         role: z.enum(["admin", "sdr"]).optional(),
         operation: z.enum(["outbound", "inbound"]),
+        extension: z.string().max(20).optional(),
       })
       .parse(d),
   )
@@ -125,9 +126,12 @@ export const createSdrUser = createServerFn({ method: "POST" })
       user_metadata: { username: data.username, full_name: data.fullName, role, operation: data.operation },
     });
     if (error) throw new Error(error.message);
-    // Garante operação no profile (caso o trigger já tenha rodado com default).
+    // Garante operação e ramal no profile (caso o trigger já tenha rodado com default).
     if (created.user) {
-      await supabaseAdmin.from("profiles").update({ operation: data.operation }).eq("user_id", created.user.id);
+      await supabaseAdmin
+        .from("profiles")
+        .update({ operation: data.operation, api4com_extension: data.extension?.trim() || null })
+        .eq("user_id", created.user.id);
     }
     return { user_id: created.user?.id, username: data.username, email, password };
   });
@@ -144,6 +148,24 @@ export const updateUserOperation = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({ operation: data.operation })
+      .eq("user_id", data.user_id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const updateUserExtension = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { user_id: string; extension: string | null }) =>
+    z.object({ user_id: z.string().uuid(), extension: z.string().max(20).nullable() }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertAdmin(supabase, userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const ext = data.extension?.trim() ? data.extension.trim() : null;
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update({ api4com_extension: ext })
       .eq("user_id", data.user_id);
     if (error) throw new Error(error.message);
     return { ok: true };

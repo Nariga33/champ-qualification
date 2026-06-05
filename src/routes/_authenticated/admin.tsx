@@ -9,6 +9,7 @@ import {
   resetUserPassword,
   getMyProfile,
   updateUserOperation,
+  updateUserExtension,
 } from "@/lib/auth.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,7 @@ function AdminPage() {
   const deleteUser = useServerFn(deleteUserById);
   const resetPw = useServerFn(resetUserPassword);
   const updateOp = useServerFn(updateUserOperation);
+  const updateExt = useServerFn(updateUserExtension);
 
   const { data: me, isLoading: meLoading } = useQuery({ queryKey: ["me"], queryFn: () => fetchProfile() });
   const { data: users, isLoading } = useQuery({
@@ -46,12 +48,13 @@ function AdminPage() {
   const [password, setPassword] = useState("O2Inc*");
   const [role, setRole] = useState<"sdr" | "admin">("sdr");
   const [operation, setOperation] = useState<"outbound" | "inbound">("outbound");
+  const [extension, setExtension] = useState("");
 
   const createMut = useMutation({
-    mutationFn: () => createUser({ data: { username, fullName, password, role, operation } }),
+    mutationFn: () => createUser({ data: { username, fullName, password, role, operation, extension: extension || undefined } }),
     onSuccess: (r) => {
       toast.success(`Usuário ${r.username} criado (senha: ${r.password})`);
-      setUsername(""); setFullName(""); setPassword("O2Inc*"); setRole("sdr"); setOperation("outbound");
+      setUsername(""); setFullName(""); setPassword("O2Inc*"); setRole("sdr"); setOperation("outbound"); setExtension("");
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao criar"),
@@ -80,6 +83,15 @@ function AdminPage() {
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao atualizar operação"),
+  });
+
+  const extMut = useMutation({
+    mutationFn: (vars: { user_id: string; extension: string | null }) => updateExt({ data: vars }),
+    onSuccess: () => {
+      toast.success("Ramal atualizado");
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao atualizar ramal"),
   });
 
   if (meLoading) {
@@ -151,6 +163,11 @@ function AdminPage() {
               </Select>
               <p className="text-xs text-muted-foreground">Define a metodologia de qualificação usada nas calls desse usuário.</p>
             </div>
+            <div className="space-y-2">
+              <Label>Ramal API4Com</Label>
+              <Input value={extension} onChange={(e) => setExtension(e.target.value)} placeholder="Ex.: 1014" />
+              <p className="text-xs text-muted-foreground">Ramal usado para originar as ligações desse SDR (opcional).</p>
+            </div>
             <div className="md:col-span-2">
               <Button type="submit" disabled={createMut.isPending}>
                 {createMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
@@ -178,6 +195,17 @@ function AdminPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Input
+                      key={`ext-${u.user_id}-${u.api4com_extension ?? ""}`}
+                      defaultValue={u.api4com_extension ?? ""}
+                      placeholder="Ramal"
+                      title="Ramal API4Com"
+                      className="h-8 w-[90px]"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v !== (u.api4com_extension ?? "")) extMut.mutate({ user_id: u.user_id, extension: v || null });
+                      }}
+                    />
                     <Select
                       value={(u.operation as "outbound" | "inbound") ?? "outbound"}
                       onValueChange={(v) => opMut.mutate({ user_id: u.user_id, operation: v as "outbound" | "inbound" })}

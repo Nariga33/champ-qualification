@@ -65,10 +65,12 @@ Deno.serve(async (req) => {
   const extension = profile?.api4com_extension ?? API4COM_DEFAULT_EXTENSION;
   if (!extension) return json({ error: "no_extension" }, 400);
 
+  // Atenção: o endpoint /dialer da API4Com usa o token cru no Authorization,
+  // SEM o prefixo "Bearer" (diferente do restante da API, que usa Bearer).
   const res = await fetch(`${API4COM_BASE_URL}/api/v1/dialer`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${API4COM_TOKEN}`,
+      Authorization: API4COM_TOKEN,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({

@@ -9,3 +9,7 @@ verify_jwt = true
 # Recebe channel-hangup do API4Com — público, protegido por ?secret=.
 [functions.api4com-webhook]
 verify_jwt = false
+
+# Dashboard de Indicadores — exige sessão do usuário.
+[functions.api4com-indicators]
+verify_jwt = true

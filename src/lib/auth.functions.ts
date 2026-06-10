@@ -77,9 +77,9 @@ export const getMySipCredentials = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
     const { data: profile } = await supabase
       .from("profiles")
-      .select("api4com_extension, api4com_sip_password")
+      .select("api4com_extension, api4com_sip_password" as any)
       .eq("user_id", userId)
-      .maybeSingle();
+      .maybeSingle() as { data: { api4com_extension: string | null; api4com_sip_password: string | null } | null };
     if (!profile?.api4com_extension || !profile?.api4com_sip_password) {
       return { configured: false as const };
     }
@@ -160,7 +160,7 @@ export const createSdrUser = createServerFn({ method: "POST" })
           operation: data.operation,
           api4com_extension: data.extension?.trim() || null,
           api4com_sip_password: data.sipPassword?.trim() || null,
-        })
+        } as any)
         .eq("user_id", created.user.id);
     }
     return { user_id: created.user?.id, username: data.username, email, password };
@@ -213,7 +213,7 @@ export const updateUserSipPassword = createServerFn({ method: "POST" })
     const pw = data.password?.trim() ? data.password.trim() : null;
     const { error } = await supabaseAdmin
       .from("profiles")
-      .update({ api4com_sip_password: pw })
+      .update({ api4com_sip_password: pw } as any)
       .eq("user_id", data.user_id);
     if (error) throw new Error(error.message);
     return { ok: true };

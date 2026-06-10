@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library, ListChecks, Mail, Lightbulb, PhoneCall, PhoneOff, MicOff } from "lucide-react";
+import { Mic, Square, Upload, Copy, Loader2, Sparkles, FileAudio, History, Trash2, X, Flame, Snowflake, Thermometer, LogOut, Shield, Library, ListChecks, Mail, Lightbulb, PhoneCall, PhoneOff, MicOff, BarChart3 } from "lucide-react";
 import { useSoftphone } from "@/hooks/useSoftphone";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -281,6 +281,9 @@ function Index() {
             <>
               <Link to="/knowledge-base">
                 <Button variant="outline" size="sm"><Library className="mr-2 h-4 w-4" /> Base de Conhecimento</Button>
+              </Link>
+              <Link to="/indicators">
+                <Button variant="outline" size="sm"><BarChart3 className="mr-2 h-4 w-4" /> Indicadores</Button>
               </Link>
               <Link to="/admin">
                 <Button variant="outline" size="sm"><Shield className="mr-2 h-4 w-4" /> Admin</Button>

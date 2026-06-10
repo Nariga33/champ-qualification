@@ -282,14 +282,14 @@ function Index() {
               <Link to="/knowledge-base">
                 <Button variant="outline" size="sm"><Library className="mr-2 h-4 w-4" /> Base de Conhecimento</Button>
               </Link>
-              <Link to="/indicators">
-                <Button variant="outline" size="sm"><BarChart3 className="mr-2 h-4 w-4" /> Indicadores</Button>
-              </Link>
               <Link to="/admin">
                 <Button variant="outline" size="sm"><Shield className="mr-2 h-4 w-4" /> Admin</Button>
               </Link>
             </>
           )}
+          <Link to="/indicators">
+            <Button variant="outline" size="sm"><BarChart3 className="mr-2 h-4 w-4" /> Indicadores</Button>
+          </Link>
           <Button
             variant="ghost"
             size="sm"

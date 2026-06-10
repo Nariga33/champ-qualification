@@ -13,6 +13,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedKnowledgeBaseRouteImport } from './routes/_authenticated/knowledge-base'
+import { Route as AuthenticatedIndicatorsRouteImport } from './routes/_authenticated/indicators'
 import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
 import { Route as AuthenticatedEmailsRouteImport } from './routes/_authenticated/emails'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
@@ -37,6 +38,11 @@ const AuthenticatedKnowledgeBaseRoute =
     path: '/knowledge-base',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedIndicatorsRoute = AuthenticatedIndicatorsRouteImport.update({
+  id: '/indicators',
+  path: '/indicators',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedHistoryRoute = AuthenticatedHistoryRouteImport.update({
   id: '/history',
   path: '/history',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AuthenticatedAdminRoute
   '/emails': typeof AuthenticatedEmailsRoute
   '/history': typeof AuthenticatedHistoryRoute
+  '/indicators': typeof AuthenticatedIndicatorsRoute
   '/knowledge-base': typeof AuthenticatedKnowledgeBaseRoute
 }
 export interface FileRoutesByTo {
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AuthenticatedAdminRoute
   '/emails': typeof AuthenticatedEmailsRoute
   '/history': typeof AuthenticatedHistoryRoute
+  '/indicators': typeof AuthenticatedIndicatorsRoute
   '/knowledge-base': typeof AuthenticatedKnowledgeBaseRoute
   '/': typeof AuthenticatedIndexRoute
 }
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/emails': typeof AuthenticatedEmailsRoute
   '/_authenticated/history': typeof AuthenticatedHistoryRoute
+  '/_authenticated/indicators': typeof AuthenticatedIndicatorsRoute
   '/_authenticated/knowledge-base': typeof AuthenticatedKnowledgeBaseRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
 }
@@ -87,9 +96,17 @@ export interface FileRouteTypes {
     | '/admin'
     | '/emails'
     | '/history'
+    | '/indicators'
     | '/knowledge-base'
   fileRoutesByTo: FileRoutesByTo
-  to: '/auth' | '/admin' | '/emails' | '/history' | '/knowledge-base' | '/'
+  to:
+    | '/auth'
+    | '/admin'
+    | '/emails'
+    | '/history'
+    | '/indicators'
+    | '/knowledge-base'
+    | '/'
   id:
     | '__root__'
     | '/_authenticated'
@@ -97,6 +114,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin'
     | '/_authenticated/emails'
     | '/_authenticated/history'
+    | '/_authenticated/indicators'
     | '/_authenticated/knowledge-base'
     | '/_authenticated/'
   fileRoutesById: FileRoutesById
@@ -136,6 +154,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedKnowledgeBaseRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/indicators': {
+      id: '/_authenticated/indicators'
+      path: '/indicators'
+      fullPath: '/indicators'
+      preLoaderRoute: typeof AuthenticatedIndicatorsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/history': {
       id: '/_authenticated/history'
       path: '/history'
@@ -164,6 +189,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedEmailsRoute: typeof AuthenticatedEmailsRoute
   AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
+  AuthenticatedIndicatorsRoute: typeof AuthenticatedIndicatorsRoute
   AuthenticatedKnowledgeBaseRoute: typeof AuthenticatedKnowledgeBaseRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
@@ -172,6 +198,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedEmailsRoute: AuthenticatedEmailsRoute,
   AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
+  AuthenticatedIndicatorsRoute: AuthenticatedIndicatorsRoute,
   AuthenticatedKnowledgeBaseRoute: AuthenticatedKnowledgeBaseRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
